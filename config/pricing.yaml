@@ -1,0 +1,16 @@
+# Dated price rows, looked up by a run's `started_at` — never by wall-clock "today" — so a report
+# generated in the past stays reproducible even after a vendor changes pricing. Add a new row with
+# effective_from/effective_to when a price changes; never mutate an existing row in place.
+- provider: gemini
+  model: gemini-3.1-flash-lite
+  effective_from: "2026-01-01"
+  effective_to: null
+  input_per_mtok_usd: 0.25
+  output_per_mtok_usd: 1.50
+
+- provider: jev
+  model: jev-latest
+  effective_from: "2026-09-15"
+  effective_to: null
+  input_per_mtok_usd: 0.042
+  output_per_mtok_usd: 0.0

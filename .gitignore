@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+
+.env
+.env.local
+*.key
+
+reports/
+.coverage
+htmlcov/
+
+# Raw HotpotQA download — only the curated slice in eval/dataset.jsonl is committed
+/tmp_hotpot_dev_distractor_v1.json
