@@ -13,6 +13,12 @@ from jev_bench.config import GeminiSettings, JevSettings
 
 @pytest.fixture
 def fake_dotenv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    # pydantic-settings' source precedence is env vars > .env file — CI deliberately exports
+    # GOOGLE_API_KEY="" / TYPESAFE_API_KEY="" as a tripwire (see ci.yml), which otherwise outranks
+    # the fake value below and makes this fixture environment-dependent: it passed locally (those
+    # vars were simply unset in that shell) but failed in CI for exactly that reason.
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
     dotenv = tmp_path / ".env"
     dotenv.write_text(
         "GOOGLE_API_KEY=unit-test-fake-gemini-key\nTYPESAFE_API_KEY=unit-test-fake-jev-key\n"
