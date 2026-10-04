@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>jev-bench — live demo</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <header>
+    <h1>jev-bench</h1>
+    <p class="subtitle">
+      Same graph, two decision backends — Gemini vs Jev — racing on one query at a time.
+    </p>
+    <p class="disclaimer">
+      This is a live, concurrent demo: both variants share CPU and network while racing, so this
+      page's latency numbers are <strong>not benchmark-grade</strong>. The measured claim comes
+      from <code>jev-bench bench</code> run sequentially — see the README.
+    </p>
+  </header>
+
+  <section class="controls">
+    <select id="query-select"></select>
+    <button id="run-button">Run</button>
+    <span id="status"></span>
+  </section>
+
+  <section class="columns">
+    <div class="variant-column" id="column-gemini">
+      <h2>Gemini</h2>
+      <ol class="node-list" id="nodes-gemini"></ol>
+      <div class="totals" id="totals-gemini"></div>
+      <div class="result" id="result-gemini"></div>
+    </div>
+    <div class="variant-column" id="column-jev">
+      <h2>Jev</h2>
+      <ol class="node-list" id="nodes-jev"></ol>
+      <div class="totals" id="totals-jev"></div>
+      <div class="result" id="result-jev"></div>
+    </div>
+  </section>
+
+  <section class="compare" id="compare"></section>
+
+  <script src="/app.js"></script>
+</body>
+</html>

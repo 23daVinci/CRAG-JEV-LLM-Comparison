@@ -32,7 +32,7 @@ class PriceBook:
 
     @classmethod
     def load(cls, path: Path = DEFAULT_PRICING_PATH) -> PriceBook:
-        raw = yaml.safe_load(path.read_text())
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
         rows = [
             PriceRow(
                 provider=entry["provider"],

@@ -6,10 +6,8 @@ from datetime import UTC, datetime
 from typing import Any, Literal, cast
 
 import httpx
-from langchain_core.exceptions import ModelRateLimitError
 from langchain_core.messages import AIMessage
-from langchain_core.runnables import Runnable
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_ollama import ChatOllama
 from pydantic import BaseModel
 
 from jev_bench.deciders.base import PassageVerdict, RetryChoice
@@ -33,88 +31,64 @@ class _RetryGrade(BaseModel):
     choice: Literal["retry", "return"]
 
 
-class GeminiDecider:
-    """Every graph decision resolved by a Gemini structured-output call — one call per decision,
-    never batched, which is deliberately "what the LangGraph CRAG template actually ships" rather
-    than the strongest possible Gemini baseline (see docs/METHODOLOGY.md's batching 2x2)."""
+class OllamaDecider:
+    """Every graph decision resolved by a local Ollama structured-output call — one call per
+    decision, never batched (see docs/METHODOLOGY.md's batching 2x2). Replaced Gemini as the
+    default variant A after Gemini's free-tier 500 requests/day quota was exhausted mid-project
+    (plan Risk 5): local inference has no quota, no rate limit, and no per-request cost at all, at
+    the cost of depending on this machine's own (CPU-only, here) hardware for speed."""
 
-    name = "gemini"
+    name = "ollama"
 
     def __init__(
         self,
-        model: ChatGoogleGenerativeAI,
+        model: ChatOllama,
         price_book: PriceBook,
-        max_concurrency: int = 3,
-        max_retries: int = 5,
+        max_retries: int = 3,
     ) -> None:
         self._model = model
         self._price_book = price_book
         self._model_name = model.model
-        # The free tier enforces a hard RPM cap with explicit 429s (confirmed: "quotaValue: 15"
-        # for gemini-3.1-flash-lite) — the graph's 5-way parallel screen_passage fan-out blows
-        # through that in one batch. A semaphore caps concurrency without adding a fixed per-call
-        # delay (a flat rate-limiter was tried and measured slower — see docs/METHODOLOGY.md);
-        # retrying on 429 with backoff means a transient quota hit degrades a run instead of
-        # crashing it.
-        self._semaphore = asyncio.Semaphore(max_concurrency)
         self._max_retries = max_retries
         self._screen_chain = model.with_structured_output(_PassageGrade, include_raw=True)
         self._sufficiency_chain = model.with_structured_output(_SufficiencyGrade, include_raw=True)
         self._retry_chain = model.with_structured_output(_RetryGrade, include_raw=True)
 
-    async def _invoke(self, chain: Runnable[Any, Any], prompt: str) -> tuple[dict[str, Any], float]:
-        async with self._semaphore:
-            delay = 2.0
-            for attempt in range(self._max_retries + 1):
-                started_at = time.perf_counter()
-                try:
-                    result = cast(dict[str, Any], await chain.ainvoke(prompt))
-                    return result, time.perf_counter() - started_at
-                except (ModelRateLimitError, httpx.RequestError) as exc:
-                    # ModelRateLimitError: the free tier's 15 RPM cap, which the semaphore above
-                    # reduces but doesn't eliminate — worth retrying with backoff. But a *daily*
-                    # quota (confirmed real: "GenerateRequestsPerDayPerProjectPerModel-FreeTier,
-                    # limit: 500" with a multi-hour suggested retry delay) won't clear within our
-                    # <=30s backoff window — retrying it just burns minutes of wall-clock time for
-                    # nothing, which is exactly what made two earlier runs look hung. Fail
-                    # immediately so the per-query handler in bench/runner.py can move on.
-                    # httpx.RequestError: transient connection/DNS failures (e.g. getaddrinfo) —
-                    # these happen below the HTTP layer, before any response is received, so
-                    # ChatGoogleGenerativeAI's own retry handling (which wraps HTTP responses)
-                    # doesn't catch them; confirmed by a real run crashing on exactly this.
-                    if isinstance(exc, ModelRateLimitError) and "RequestsPerDay" in str(exc):
-                        raise
-                    if attempt == self._max_retries:
-                        raise
-                    await asyncio.sleep(delay)
-                    delay = min(delay * 2, 30.0)
+    async def _invoke(self, chain: Any, prompt: str) -> tuple[dict[str, Any], float]:
+        delay = 1.0
+        for attempt in range(self._max_retries + 1):
+            started_at = time.perf_counter()
+            try:
+                result = cast(dict[str, Any], await chain.ainvoke(prompt))
+                return result, time.perf_counter() - started_at
+            except httpx.RequestError:
+                # No cloud quota/rate limit to worry about here — the only realistic transient
+                # failure is the local Ollama server itself hiccuping (e.g. mid-restart).
+                if attempt == self._max_retries:
+                    raise
+                await asyncio.sleep(delay)
+                delay = min(delay * 2, 10.0)
         raise AssertionError("unreachable: loop always returns or raises")
 
     def _metrics(self, duration_seconds: float, raw: AIMessage) -> CallMetrics:
         usage: dict[str, Any] = dict(raw.usage_metadata or {})
         input_tokens = usage.get("input_tokens", 0)
         output_tokens = usage.get("output_tokens", 0)
-        reasoning_tokens = (usage.get("output_token_details") or {}).get("reasoning", 0)
-        if reasoning_tokens:
-            raise RuntimeError(
-                f"Gemini reported {reasoning_tokens} thinking tokens on a grader call; thinking "
-                "must be disabled (thinking_budget=0) so cost/latency stay comparable to Jev."
-            )
         latency_ms = duration_seconds * 1000
         now = datetime.now(UTC)
         cost = self._price_book.cost_usd(
-            "gemini", self._model_name, input_tokens, output_tokens, now
+            "ollama", self._model_name, input_tokens, output_tokens, now
         )
-        response_metadata = raw.response_metadata or {}
         return CallMetrics(
-            provider="gemini",
+            provider="ollama",
             model=self._model_name,
             latency_ms=latency_ms,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cost_usd=cost,
             latency_source="measured",
-            request_id=response_metadata.get("id"),
+            # No equivalent of a server-assigned request id is exposed for local Ollama calls.
+            request_id=None,
             captured_at=now.isoformat(),
         )
 
@@ -172,4 +146,4 @@ class GeminiDecider:
         return Decision(value=parsed.choice, metrics=metrics, evidence={})
 
     async def aclose(self) -> None:
-        await self._model.aclose()
+        pass

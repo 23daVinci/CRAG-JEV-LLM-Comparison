@@ -42,14 +42,17 @@ def make_screen_node(decider: Decider) -> Node:
             )
         )
         verdicts = dict(state["passage_verdicts"])
+        evidence = dict(state["passage_evidence"])
         selected = list(state["selected_ids"])
         for doc_id, decision in zip(candidates, decisions, strict=True):
             span.record(decision)
             verdicts[doc_id] = decision.value
+            evidence[doc_id] = decision.evidence
             if decision.value.relevant and not decision.value.is_injection:
                 selected.append(doc_id)
         return {
             "passage_verdicts": verdicts,
+            "passage_evidence": evidence,
             "selected_ids": selected,
             "screened_ids": [*state["screened_ids"], *candidates],
             "trace": [span.finish()],

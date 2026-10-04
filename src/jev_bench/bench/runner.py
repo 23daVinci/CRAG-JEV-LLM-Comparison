@@ -8,6 +8,7 @@ from typing import Any
 from jev_bench.deciders.base import Decider
 from jev_bench.graph.builder import GraphConfig, build_graph
 from jev_bench.graph.state import initial_state
+from jev_bench.retrieval.store import hash_doc_pool
 from jev_bench.telemetry.model import NodeSpan
 
 DEFAULT_DATASET_PATH = Path(__file__).parent.parent.parent.parent / "eval" / "dataset.jsonl"
@@ -17,7 +18,9 @@ CompiledGraph = Any
 
 
 def load_dataset(path: Path = DEFAULT_DATASET_PATH) -> list[Record]:
-    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    return [
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +31,9 @@ class QueryResult:
     selected_titles: frozenset[str]
     attempts: int
     spans: list[NodeSpan]
+    passage_evidence: dict[str, dict[str, float]]
+    """Raw per-document screen_passage evidence (e.g. Jev's un-thresholded `relevant` probability),
+    keyed by doc id — feeds the PR-curve/iso-recall analysis in analysis.py."""
 
     @property
     def latency_ms(self) -> float:
@@ -47,6 +53,12 @@ class ComparisonResult:
     b: QueryResult
 
 
+@dataclass(frozen=True, slots=True)
+class QueryFailure:
+    query_id: str
+    error: str
+
+
 async def _run_one(app: CompiledGraph, record: Record) -> QueryResult:
     state = initial_state(record["question"], record["context"])
     final = await app.ainvoke(state)
@@ -57,6 +69,7 @@ async def _run_one(app: CompiledGraph, record: Record) -> QueryResult:
         selected_titles=frozenset(final["selected_ids"]),
         attempts=final["attempt"],
         spans=final["trace"],
+        passage_evidence=final["passage_evidence"],
     )
 
 
@@ -73,18 +86,38 @@ async def run_comparison(
     decider_b: Decider,
     records: list[Record] | None = None,
     cfg: GraphConfig | None = None,
-) -> list[ComparisonResult]:
+) -> tuple[list[ComparisonResult], list[QueryFailure]]:
     """A and B run per-query, interleaved (A then B, then the next query) rather than all-A-then-
     all-B, so provider-side drift (rate limiting, latency variance over time) lands on both sides
-    equally instead of concentrating in whichever ran first."""
+    equally instead of concentrating in whichever ran first.
+
+    One query's failure does not sink the whole run — a single transient error (rate limit outlast
+    its retries, a DNS blip) used to cost every query's worth of real API spend and ~minutes of
+    wall-clock time already spent on the run, with nothing to show for it, since `build_report` only
+    assembles output after the full loop finishes. Failures are collected and returned alongside the
+    successes rather than silently dropped, so the caller can see exactly what was skipped and why.
+    """
 
     records = records if records is not None else load_dataset()
     app_a = build_graph(decider_a, cfg=cfg)
     app_b = build_graph(decider_b, cfg=cfg)
     results: list[ComparisonResult] = []
+    failures: list[QueryFailure] = []
     for record in records:
-        result_a = await _run_one(app_a, record)
-        result_b = await _run_one(app_b, record)
+        try:
+            fixture_hash = hash_doc_pool(record["context"])
+            result_a = await _run_one(app_a, record)
+            result_b = await _run_one(app_b, record)
+            if hash_doc_pool(record["context"]) != fixture_hash:
+                raise RuntimeError(
+                    f"retrieval fixture for query {record['id']!r} changed during the run — "
+                    "retrieval must never be a variable between variants"
+                )
+        except Exception as exc:  # noqa: BLE001 — one query's failure must not sink the run
+            failures.append(
+                QueryFailure(query_id=record["id"], error=f"{type(exc).__name__}: {exc}")
+            )
+            continue
         results.append(
             ComparisonResult(
                 query_id=record["id"],
@@ -94,4 +127,4 @@ async def run_comparison(
                 b=result_b,
             )
         )
-    return results
+    return results, failures

@@ -14,3 +14,21 @@
   effective_to: null
   input_per_mtok_usd: 0.042
   output_per_mtok_usd: 0.0
+
+# Local inference: genuinely $0, not "free output tokens" like Jev — there's no API call at all.
+# Kept as an explicit priced row (not a special-cased default in pricing.py) so the cost accounting
+# code path is identical for every provider; the report should show $0.000000, not an absence.
+- provider: ollama
+  model: llama3.2:3b
+  effective_from: "2026-01-01"
+  effective_to: null
+  input_per_mtok_usd: 0.0
+  output_per_mtok_usd: 0.0
+
+# "Preview" catalog model per Groq — may be discontinued at short notice (see docs/METHODOLOGY.md).
+- provider: groq
+  model: qwen/qwen3.8-27b
+  effective_from: "2026-08-27"
+  effective_to: null
+  input_per_mtok_usd: 0.80
+  output_per_mtok_usd: 4.00

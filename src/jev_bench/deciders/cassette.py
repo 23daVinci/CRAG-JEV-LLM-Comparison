@@ -38,7 +38,7 @@ class CassetteDecider:
         self.name = inner.name
         self._entries: dict[str, dict[str, Any]] = {}
         if cassette_path.exists():
-            for line in cassette_path.read_text().splitlines():
+            for line in cassette_path.read_text(encoding="utf-8").splitlines():
                 if line.strip():
                     entry = json.loads(line)
                     self._entries[entry["key"]] = entry
@@ -53,7 +53,7 @@ class CassetteDecider:
         }
         self._entries[key] = entry
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        with self._path.open("a") as f:
+        with self._path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(entry) + "\n")
 
     def _replay(self, key: str, method: str, value_fn: Callable[[Any], Any]) -> Decision[Any]:
@@ -99,3 +99,6 @@ class CassetteDecider:
         decision = await self._inner.decide_retry(query, attempt, sufficient)
         self._append(key, "decide_retry", decision.value, decision)
         return decision
+
+    async def aclose(self) -> None:
+        await self._inner.aclose()

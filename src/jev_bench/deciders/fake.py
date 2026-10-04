@@ -49,3 +49,6 @@ class ScriptedDecider:
         self, query: str, attempt: int, sufficient: bool
     ) -> Decision[RetryChoice]:
         return Decision(value=self.retry_fn(query, attempt, sufficient), metrics=ZERO_METRICS)
+
+    async def aclose(self) -> None:
+        pass

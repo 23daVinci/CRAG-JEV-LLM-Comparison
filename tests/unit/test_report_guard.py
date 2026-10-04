@@ -2,10 +2,10 @@ import pytest
 
 from jev_bench.bench.report import ReplayedLatencyError, build_report
 from jev_bench.bench.runner import ComparisonResult, QueryResult
-from jev_bench.telemetry.model import CallMetrics, NodeSpan
+from jev_bench.telemetry.model import CallMetrics, LatencySource, NodeSpan
 
 
-def _span(latency_source: str) -> NodeSpan:
+def _span(latency_source: LatencySource) -> NodeSpan:
     call = CallMetrics(
         provider="jev",
         model="jev-latest",
@@ -20,7 +20,7 @@ def _span(latency_source: str) -> NodeSpan:
     )
 
 
-def _result(query_id: str, latency_source: str) -> QueryResult:
+def _result(query_id: str, latency_source: LatencySource) -> QueryResult:
     return QueryResult(
         query_id=query_id,
         question="q",
@@ -28,6 +28,7 @@ def _result(query_id: str, latency_source: str) -> QueryResult:
         selected_titles=frozenset({"a"}),
         attempts=1,
         spans=[_span(latency_source)],
+        passage_evidence={"a": {"relevant": 1.0}},
     )
 
 

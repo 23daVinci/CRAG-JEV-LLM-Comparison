@@ -38,7 +38,7 @@ def to_record(raw: dict) -> dict:
 
 
 def main(source_path: str) -> None:
-    raw_records = json.loads(Path(source_path).read_text())
+    raw_records = json.loads(Path(source_path).read_text(encoding="utf-8"))
 
     bridge = [r for r in raw_records if r["type"] == "bridge"]
     comparison = [r for r in raw_records if r["type"] == "comparison"]
@@ -53,14 +53,15 @@ def main(source_path: str) -> None:
     records = [to_record(r) for r in selected]
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with OUTPUT_PATH.open("w") as f:
+    with OUTPUT_PATH.open("w", encoding="utf-8") as f:
         for record in records:
             f.write(json.dumps(record) + "\n")
 
     DATA_CARD_PATH.write_text(
         DATA_CARD_TEMPLATE.format(
             n=len(records), n_bridge=N_BRIDGE, n_comparison=N_COMPARISON, seed=SEED
-        )
+        ),
+        encoding="utf-8",
     )
 
     print(f"wrote {len(records)} records to {OUTPUT_PATH}")

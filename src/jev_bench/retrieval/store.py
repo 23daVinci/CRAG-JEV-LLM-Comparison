@@ -1,10 +1,21 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 import re
 from collections import Counter
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
+
+
+def hash_doc_pool(doc_pool: dict[str, str]) -> str:
+    """Canonical hash of a query's retrieval fixture. Used to assert both variants ran against the
+    byte-identical document pool — retrieval is never supposed to be a variable under test, so this
+    turns "we're pretty sure both sides saw the same docs" into something a test actually checks."""
+
+    canonical = json.dumps(doc_pool, sort_keys=True)
+    return hashlib.sha256(canonical.encode()).hexdigest()
 
 
 def _tokenize(text: str) -> list[str]:

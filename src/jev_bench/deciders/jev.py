@@ -6,14 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
-from typesafe_sdk import (
-    AsyncTypeSafeClient,
-    Choice,
-    ChoiceAnswer,
-    Noul,
-    NoulAnswer,
-    SystemOneResponse,
-)
+from typesafe_sdk import AsyncTypeSafeClient, Choice, Noul, SystemOneResponse, TypeSafeError
 
 from jev_bench.deciders.base import PassageVerdict, RetryChoice
 from jev_bench.graph import prompts
@@ -23,18 +16,13 @@ from jev_bench.telemetry.pricing import PriceBook
 DEFAULT_THRESHOLDS_PATH = Path(__file__).parent.parent.parent.parent / "config" / "thresholds.yaml"
 
 
-def _noul(response: SystemOneResponse, key: str) -> float:
-    answer = response.answers[key]
-    assert isinstance(answer, NoulAnswer), f"expected a Noul answer for {key!r}, got {answer.type}"
-    return answer.noul
-
-
-def _choice(response: SystemOneResponse, key: str) -> ChoiceAnswer:
-    answer = response.answers[key]
-    assert isinstance(answer, ChoiceAnswer), (
-        f"expected a Choice answer for {key!r}, got {answer.type}"
-    )
-    return answer
+def _request_id(response: SystemOneResponse) -> str | None:
+    try:
+        return response.request_id
+    except TypeSafeError:
+        # The SDK raises if the server omitted the x-typesafe-request-id header — rare, but not
+        # worth failing the whole decision over since it's telemetry, not a correctness input.
+        return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -47,7 +35,7 @@ class JevThresholds:
 
     @classmethod
     def load(cls, path: Path = DEFAULT_THRESHOLDS_PATH) -> JevThresholds:
-        raw = yaml.safe_load(path.read_text())
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
         return cls(**raw)
 
 
@@ -72,12 +60,10 @@ class JevDecider:
         self._price_book = price_book
         self._model = model
 
-    def _metrics(
-        self, started_at: float, usage_input: int | None, usage_output: int | None
-    ) -> CallMetrics:
+    def _metrics(self, started_at: float, response: SystemOneResponse) -> CallMetrics:
         latency_ms = (time.perf_counter() - started_at) * 1000
-        input_tokens = usage_input or 0
-        output_tokens = usage_output or 0
+        input_tokens = response.usage.input_tokens or 0
+        output_tokens = response.usage.output_tokens or 0
         now = datetime.now(UTC)
         cost = self._price_book.cost_usd("jev", self._model, input_tokens, output_tokens, now)
         return CallMetrics(
@@ -88,9 +74,7 @@ class JevDecider:
             output_tokens=output_tokens,
             cost_usd=cost,
             latency_source="measured",
-            # typesafe_sdk's SystemOneResponse does not surface a request id on success; only
-            # error responses carry one. Left None rather than faked.
-            request_id=None,
+            request_id=_request_id(response),
             captured_at=now.isoformat(),
         )
 
@@ -109,10 +93,11 @@ class JevDecider:
             model=self._model,
         )
         t = self._thresholds
-        relevant_p = _noul(response, "is_relevant")
-        evidence_p = _noul(response, "has_evidence")
-        contradicts_p = _noul(response, "contradicts_query")
-        injection_p = _noul(response, "is_injection")
+        nouls = response.nouls
+        relevant_p = nouls["is_relevant"].noul
+        evidence_p = nouls["has_evidence"].noul
+        contradicts_p = nouls["contradicts_query"].noul
+        injection_p = nouls["is_injection"].noul
         is_injection = injection_p >= t.injection
         verdict = PassageVerdict(
             relevant=(relevant_p >= t.relevance) and not is_injection,
@@ -126,9 +111,7 @@ class JevDecider:
             "contradicts_query": contradicts_p,
             "is_injection": injection_p,
         }
-        metrics = self._metrics(
-            started_at, response.usage.input_tokens, response.usage.output_tokens
-        )
+        metrics = self._metrics(started_at, response)
         return Decision(value=verdict, metrics=metrics, evidence=evidence)
 
     async def grade_sufficiency(self, query: str, selected_docs: list[str]) -> Decision[bool]:
@@ -143,11 +126,9 @@ class JevDecider:
             },
             model=self._model,
         )
-        probability = _noul(response, "sufficient")
+        probability = response.nouls["sufficient"].noul
         value = probability >= self._thresholds.sufficiency
-        metrics = self._metrics(
-            started_at, response.usage.input_tokens, response.usage.output_tokens
-        )
+        metrics = self._metrics(started_at, response)
         return Decision(value=value, metrics=metrics, evidence={"sufficient": probability})
 
     async def decide_retry(
@@ -167,13 +148,14 @@ class JevDecider:
             },
             model=self._model,
         )
-        answer = _choice(response, "retry_or_return")
+        answer = response.choices["retry_or_return"]
         value: RetryChoice = "retry" if answer.choice == "retry" else "return"
-        metrics = self._metrics(
-            started_at, response.usage.input_tokens, response.usage.output_tokens
-        )
+        metrics = self._metrics(started_at, response)
         return Decision(
             value=value,
             metrics=metrics,
             evidence={"confidence": answer.confidence, **answer.probabilities},
         )
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
