@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import httpx2
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_groq import ChatGroq
 from langchain_ollama import ChatOllama
 from pydantic import SecretStr
-from typesafe_sdk import AsyncTypeSafeClient
+from typesafe_sdk import AsyncTypeSafeClient, RetryPolicy
 
 from jev_bench.config import Settings
 from jev_bench.deciders.base import Decider
@@ -75,7 +76,20 @@ def build_groq_decider(settings: Settings, price_book: PriceBook | None = None) 
 def build_jev_decider(settings: Settings, price_book: PriceBook | None = None) -> JevDecider:
     if not settings.jev.api_key:
         raise RuntimeError("TYPESAFE_API_KEY is not set")
-    client = AsyncTypeSafeClient(api_key=settings.jev.api_key, model=settings.jev.model)
+    client = AsyncTypeSafeClient(
+        api_key=settings.jev.api_key,
+        model=settings.jev.model,
+        # graph/nodes.py's screen node fans out up to GraphConfig.batch_size (5) concurrent
+        # screen_passage calls per retrieve-loop iteration (asyncio.gather) — exactly the
+        # many-concurrent-requests shape TypeSafe's own SDK docs recommend HTTP/2 for, since it
+        # multiplexes requests over one connection instead of queuing them behind HTTP/1.1's
+        # per-host connection limit. Requires the `typesafe-sdk[http2]` extra for the `h2` package.
+        http_client=httpx2.AsyncClient(http2=True),
+        # Explicit rather than relying on the client's implicit default, so a future typesafe-sdk
+        # version bump can't silently change retry behavior without it showing up as a diff here —
+        # same reproducibility stance as this project's dated price book and frozen eval splits.
+        retry=RetryPolicy(),
+    )
     return JevDecider(
         client, JevThresholds.load(), price_book or PriceBook.load(), settings.jev.model
     )
