@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>jev-bench results: Groq (LLM) vs. Jev, held-out test split</title>
+  <!-- Static, self-contained results page. No scripts, no network requests, no backend.
+       Open directly via file://. Append #light or #dark to the URL to force a theme. -->
+  <link rel="stylesheet" href="results.css">
+</head>
+<body>
+  <span id="light" class="theme-anchor" aria-hidden="true"></span>
+  <span id="dark" class="theme-anchor" aria-hidden="true"></span>
+
+  <main class="page">
+
+    <!-- ===== Header ===== -->
+    <header class="hero">
+      <div class="eyebrow">
+        <span class="brand">jev-bench</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>A/B benchmark of an agentic retrieval workflow</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>Held-out test split, n = 9</span>
+      </div>
+
+      <h1>Dramatically faster and cheaper, <span class="h1-muted">but a real accuracy cost.</span></h1>
+
+      <p class="lede">
+        One LangGraph workflow, two decision backends. The classification-style calls
+        (is this passage relevant, is the evidence sufficient, should it retry) are answered
+        either by an LLM (Groq) or by Jev, TypeSafe AI's model that returns typed probabilities
+        instead of generated text.
+      </p>
+
+      <ul class="legend" aria-label="Variants">
+        <li><span class="swatch swatch-llm" aria-hidden="true"></span><strong>Groq</strong><span class="legend-sub">LLM decider, qwen/qwen3.8-27b</span></li>
+        <li><span class="swatch swatch-jev" aria-hidden="true"></span><strong>Jev</strong><span class="legend-sub">TypeSafe AI, probability-based decider</span></li>
+      </ul>
+    </header>
+
+    <!-- ===== KPI row ===== -->
+    <section class="kpis" aria-label="Headline results">
+
+      <article class="card kpi">
+        <div class="kpi-label">Median latency per query</div>
+        <div class="kpi-value">22<span class="kpi-x">&times;</span><span class="kpi-unit">faster</span></div>
+        <div class="kpi-caption">Jev 1.3s vs. Groq 29.2s</div>
+        <div class="minibars" role="img" aria-label="Median latency: Groq 29.2 seconds, Jev 1.3 seconds">
+          <div class="mb-row" title="Groq (LLM decider): 29.2s median">
+            <span class="mb-name">Groq</span>
+            <span class="mb-track"><span class="mb-fill fill-llm" style="width:100%"></span></span>
+            <span class="mb-val">29.2s</span>
+          </div>
+          <div class="mb-row" title="Jev: 1.3s median">
+            <span class="mb-name">Jev</span>
+            <span class="mb-track"><span class="mb-fill fill-jev" style="width:4.45%"></span></span>
+            <span class="mb-val">1.3s</span>
+          </div>
+        </div>
+        <div class="kpi-foot">Paired Wilcoxon signed-rank, p = 0.0078</div>
+      </article>
+
+      <article class="card kpi">
+        <div class="kpi-label">Cost per 1,000 queries</div>
+        <div class="kpi-value">21<span class="kpi-x">&times;</span><span class="kpi-unit">cheaper</span></div>
+        <div class="kpi-caption">Jev $0.26 vs. Groq $5.52</div>
+        <div class="minibars" role="img" aria-label="Cost per 1,000 queries: Groq $5.52, Jev $0.26">
+          <div class="mb-row" title="Groq (LLM decider): $5.52 per 1,000 queries">
+            <span class="mb-name">Groq</span>
+            <span class="mb-track"><span class="mb-fill fill-llm" style="width:100%"></span></span>
+            <span class="mb-val">$5.52</span>
+          </div>
+          <div class="mb-row" title="Jev: $0.26 per 1,000 queries">
+            <span class="mb-name">Jev</span>
+            <span class="mb-track"><span class="mb-fill fill-jev" style="width:4.71%"></span></span>
+            <span class="mb-val">$0.26</span>
+          </div>
+        </div>
+        <div class="kpi-foot">Priced from dated rows in <code>config/pricing.yaml</code></div>
+      </article>
+
+      <article class="card kpi kpi-cost">
+        <div class="kpi-label">Selection quality vs. gold (F1)</div>
+        <div class="kpi-value">&minus;16.3<span class="kpi-unit">F1 points</span></div>
+        <div class="kpi-caption">Jev 0.667 vs. Groq 0.830</div>
+        <div class="minibars" role="img" aria-label="Mean selected-set F1: Groq 0.830, Jev 0.667, on a 0 to 1 scale">
+          <div class="mb-row" title="Groq (LLM decider): F1 0.830, 95% CI [0.719, 0.926]">
+            <span class="mb-name">Groq</span>
+            <span class="mb-track"><span class="mb-fill fill-llm" style="width:83%"></span></span>
+            <span class="mb-val">0.830</span>
+          </div>
+          <div class="mb-row" title="Jev: F1 0.667, 95% CI [0.463, 0.852]">
+            <span class="mb-name">Jev</span>
+            <span class="mb-track"><span class="mb-fill fill-jev" style="width:66.7%"></span></span>
+            <span class="mb-val">0.667</span>
+          </div>
+        </div>
+        <div class="status-chip">
+          <svg class="status-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 1.5 15 14H1L8 1.5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 6v3.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="11.7" r=".95" fill="currentColor"/></svg>
+          <span>Exceeds the pre-registered 3-point kill switch</span>
+        </div>
+      </article>
+    </section>
+
+    <!-- ===== Detail row ===== -->
+    <section class="detail">
+
+      <article class="card panel panel-quality">
+        <header class="panel-head">
+          <h2>The quality gap, with its uncertainty</h2>
+          <p>Mean selected-set F1 against HotpotQA's gold <code>supporting_facts</code>, with 95% bootstrap CI over queries.</p>
+        </header>
+
+        <svg class="ci-chart" viewBox="0 0 640 250" width="640" height="250" role="img"
+             aria-label="Dot plot with 95% confidence intervals. Groq F1 0.830, CI 0.719 to 0.926. Jev F1 0.667, CI 0.463 to 0.852. Kill-switch line at 0.800, Groq minus 3 points.">
+          <!-- x(v) = 56 + (v - 0.4) / 0.6 * 572 -->
+          <g class="grid">
+            <line x1="56" x2="56" y1="40" y2="196"/>
+            <line x1="151.3" x2="151.3" y1="40" y2="196"/>
+            <line x1="246.7" x2="246.7" y1="40" y2="196"/>
+            <line x1="342" x2="342" y1="40" y2="196"/>
+            <line x1="437.3" x2="437.3" y1="40" y2="196"/>
+            <line x1="532.7" x2="532.7" y1="40" y2="196"/>
+            <line x1="628" x2="628" y1="40" y2="196"/>
+          </g>
+          <line class="axis" x1="56" x2="628" y1="196" y2="196"/>
+          <g class="tick-labels">
+            <text x="56" y="216">0.4</text>
+            <text x="151.3" y="216">0.5</text>
+            <text x="246.7" y="216">0.6</text>
+            <text x="342" y="216">0.7</text>
+            <text x="437.3" y="216">0.8</text>
+            <text x="532.7" y="216">0.9</text>
+            <text x="628" y="216">1.0</text>
+          </g>
+          <text class="axis-title" x="628" y="242">Selected-set F1 &rarr;</text>
+
+          <!-- Kill-switch line: Groq point estimate minus 3 points = 0.800 -->
+          <line class="kill-line" x1="437.3" x2="437.3" y1="6" y2="196"/>
+          <text class="kill-label" x="430" y="15" text-anchor="end">Kill-switch line</text>
+          <text class="kill-sub" x="430" y="31" text-anchor="end">Groq &minus; 3 pts = 0.800</text>
+
+          <!-- Groq row: 0.830 [0.719, 0.926] -->
+          <g class="ci-row">
+            <title>Groq (LLM decider): F1 0.830, 95% CI [0.719, 0.926]</title>
+            <text class="row-label" x="0" y="91">Groq</text>
+            <line class="whisker stroke-llm" x1="360.1" x2="557.5" y1="86" y2="86"/>
+            <line class="cap stroke-llm" x1="360.1" x2="360.1" y1="78" y2="94"/>
+            <line class="cap stroke-llm" x1="557.5" x2="557.5" y1="78" y2="94"/>
+            <circle class="dot fill-llm" cx="465.9" cy="86" r="7.5"/>
+            <text class="val-label" x="465.9" y="68">0.830</text>
+          </g>
+
+          <!-- Jev row: 0.667 [0.463, 0.852] -->
+          <g class="ci-row">
+            <title>Jev: F1 0.667, 95% CI [0.463, 0.852]</title>
+            <text class="row-label" x="0" y="153">Jev</text>
+            <line class="whisker stroke-jev" x1="116.1" x2="486.9" y1="148" y2="148"/>
+            <line class="cap stroke-jev" x1="116.1" x2="116.1" y1="140" y2="156"/>
+            <line class="cap stroke-jev" x1="486.9" x2="486.9" y1="140" y2="156"/>
+            <circle class="dot fill-jev" cx="310.5" cy="148" r="7.5"/>
+            <text class="val-label" x="310.5" y="178">0.667</text>
+          </g>
+        </svg>
+
+        <div class="callouts">
+          <div class="callout">
+            <div class="callout-num">16.3 pts</div>
+            <div class="callout-text">gap between point estimates, more than five times the 3-point threshold this project pre-registered as its kill switch.</div>
+          </div>
+          <div class="callout">
+            <div class="callout-num">~11 pts</div>
+            <div class="callout-text">how far a single flipped query moves F1 at n = 9. The intervals overlap heavily: a real but imprecisely measured cost.</div>
+          </div>
+          <div class="callout">
+            <div class="callout-num">29 &rarr; 16.3</div>
+            <div class="callout-text">gap before and after tuning Jev's thresholds on a separate train split. Narrower, not closed.</div>
+          </div>
+        </div>
+      </article>
+
+      <aside class="side">
+        <article class="card panel">
+          <header class="panel-head">
+            <h2>Why it's apples to apples</h2>
+            <p>Same compiled LangGraph graph, same selected-document-set task, two interchangeable decision backends.</p>
+          </header>
+          <ol class="pipeline" aria-label="Graph topology">
+            <li class="node">retrieve</li>
+            <li class="arrow" aria-hidden="true">&rarr;</li>
+            <li class="node node-decision">screen</li>
+            <li class="arrow" aria-hidden="true">&rarr;</li>
+            <li class="node node-decision">sufficiency</li>
+            <li class="arrow" aria-hidden="true">&rarr;</li>
+            <li class="node node-decision">decide_retry</li>
+          </ol>
+          <p class="pipeline-note"><span class="decision-key" aria-hidden="true"></span>Decision node, answered by whichever backend is plugged in. Identical node/edge topology for both is asserted by a test, not by convention.</p>
+        </article>
+
+        <article class="card panel">
+          <header class="panel-head">
+            <h2>Injection guard</h2>
+            <p>Planted prompt-injection probes, ground truth exact by construction (n = 8).</p>
+          </header>
+          <div class="parity">
+            <div class="parity-col">
+              <span class="parity-name"><span class="swatch swatch-llm" aria-hidden="true"></span>Groq</span>
+              <span class="parity-val">1.00 <span class="slash">/</span> 1.00</span>
+            </div>
+            <div class="parity-col">
+              <span class="parity-name"><span class="swatch swatch-jev" aria-hidden="true"></span>Jev</span>
+              <span class="parity-val">1.00 <span class="slash">/</span> 1.00</span>
+            </div>
+          </div>
+          <p class="parity-note">Precision / recall. Parity: both caught every probe with no false alarms.</p>
+        </article>
+      </aside>
+    </section>
+
+    <!-- ===== Method strip ===== -->
+    <section class="card method" aria-label="How this was measured">
+      <div class="method-item">
+        <h3>Held-out test</h3>
+        <p>9 of 45 frozen HotpotQA questions, never seen during tuning. Jev's thresholds were tuned on a 27-query train split and confirmed on a 9-query val split. Test was scored once.</p>
+      </div>
+      <div class="method-item">
+        <h3>Objective labels</h3>
+        <p>Output under test is the selected document set, scored against HotpotQA's own gold supporting facts. No LLM judge, no generation step.</p>
+      </div>
+      <div class="method-item">
+        <h3>Paired, live runs</h3>
+        <p>Real Groq and Jev API calls, A/B interleaved per query against a frozen document pool hashed before and after each pair.</p>
+      </div>
+      <div class="method-item">
+        <h3>Small n, stated plainly</h3>
+        <p>Read the speed and cost gaps as large and clear; read the quality gap as real but wide-error-barred until a bigger split confirms it.</p>
+      </div>
+    </section>
+
+    <footer class="foot">
+      <span><strong>jev-bench</strong> &middot; full methodology and caveats in <code>docs/METHODOLOGY.md</code></span>
+      <span>Eval data: HotpotQA dev-distractor slice, CC BY-SA 4.0</span>
+    </footer>
+  </main>
+</body>
+</html>
