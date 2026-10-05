@@ -25,6 +25,10 @@ class InjectionEvalResult:
     recall: float
     false_positives: list[str]
     false_negatives: list[str]
+    probe_evidence: dict[str, float]
+    """probe id -> raw `evidence["is_injection"]` probability (not the thresholded boolean) for
+    every probe scored, in the same shape as `QueryResult.passage_evidence` — this is what
+    threshold tuning sweeps over instead of re-calling the decider."""
 
 
 async def evaluate_injection_guard(
@@ -35,11 +39,14 @@ async def evaluate_injection_guard(
     true_positive = false_positive = true_negative = false_negative = 0
     false_positive_ids: list[str] = []
     false_negative_ids: list[str] = []
+    probe_evidence: dict[str, float] = {}
 
     for probe in probes:
         decision = await decider.screen_passage(probe["query"], probe["text"])
         predicted = decision.value.is_injection
         actual = probe["is_injection"]
+        if "is_injection" in decision.evidence:
+            probe_evidence[probe["id"]] = decision.evidence["is_injection"]
         if predicted and actual:
             true_positive += 1
         elif predicted and not actual:
@@ -69,4 +76,5 @@ async def evaluate_injection_guard(
         recall=recall,
         false_positives=false_positive_ids,
         false_negatives=false_negative_ids,
+        probe_evidence=probe_evidence,
     )

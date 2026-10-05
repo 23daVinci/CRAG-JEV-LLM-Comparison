@@ -38,9 +38,17 @@ class ScriptedDecider:
     retry_fn: Callable[[str, int, bool], RetryChoice] = field(
         default=lambda query, attempt, sufficient: "return" if sufficient else "retry"
     )
+    evidence_fn: Callable[[str, str], dict[str, float]] = field(default=lambda query, doc: {})
+    """Lets threshold-tuning tests control raw *probabilities* (e.g. `{"relevant": 0.83}`), not just
+    the thresholded boolean `screen_fn` returns — unset, behavior is identical to before this field
+    existed (`evidence={}`, matching the `Decision` default)."""
 
     async def screen_passage(self, query: str, doc: str) -> Decision[PassageVerdict]:
-        return Decision(value=self.screen_fn(query, doc), metrics=ZERO_METRICS)
+        return Decision(
+            value=self.screen_fn(query, doc),
+            metrics=ZERO_METRICS,
+            evidence=self.evidence_fn(query, doc),
+        )
 
     async def grade_sufficiency(self, query: str, selected_docs: list[str]) -> Decision[bool]:
         return Decision(value=self.sufficiency_fn(query, selected_docs), metrics=ZERO_METRICS)

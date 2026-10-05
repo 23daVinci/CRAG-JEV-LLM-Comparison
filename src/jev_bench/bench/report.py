@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter
 
 from jev_bench.bench.analysis import (
+    bootstrap_mean_ci,
     gemini_operating_point,
     paired_latency_comparison,
     precision_at_recall,
@@ -42,6 +43,7 @@ def _side_summary(name: str, results: list[QueryResult]) -> str:
     mean_precision = sum(m.precision for m in metrics) / len(metrics)
     mean_recall = sum(m.recall for m in metrics) / len(metrics)
     mean_f1 = sum(m.f1 for m in metrics) / len(metrics)
+    f1_ci_low, f1_ci_high = bootstrap_mean_ci([m.f1 for m in metrics])
     latency = summarize_latency(latencies)
     attempt_counts = Counter(r.attempts for r in results)
     attempt_distribution = ", ".join(
@@ -52,7 +54,8 @@ def _side_summary(name: str, results: list[QueryResult]) -> str:
         f"### {name}\n\n"
         f"- queries: {len(results)}\n"
         f"- selection quality vs gold: precision={mean_precision:.3f} "
-        f"recall={mean_recall:.3f} f1={mean_f1:.3f}\n"
+        f"recall={mean_recall:.3f} f1={mean_f1:.3f} "
+        f"(95% bootstrap CI: [{f1_ci_low:.3f}, {f1_ci_high:.3f}], n={len(metrics)} queries)\n"
         f"- latency: median={latency.median_ms:.1f}ms p90={latency.p90_ms:.1f}ms "
         f"iqr=({latency.iqr_ms[0]:.1f}, {latency.iqr_ms[1]:.1f})ms\n"
         f"- retry-attempt distribution: {attempt_distribution}\n"
