@@ -91,6 +91,65 @@ def precision_at_recall(points: list[ThresholdPoint], target_recall: float) -> f
     return max(candidates) if candidates else 0.0
 
 
+def metrics_at_threshold(
+    probabilities: list[float], labels: list[bool], threshold: float
+) -> SelectionMetrics:
+    """Precision/recall/F1 at one fixed, already-chosen threshold — used to *confirm* a threshold
+    picked elsewhere (e.g. on a train split) against new data (e.g. a val or test split), as opposed
+    to `sweep_thresholds`, which searches over every candidate threshold. Confirming must never
+    re-search; that would make val/test not actually held out from the choice."""
+
+    predicted_positive = sum(1 for p in probabilities if p >= threshold)
+    true_positive = sum(
+        1 for p, label in zip(probabilities, labels, strict=True) if p >= threshold and label
+    )
+    total_positive = sum(1 for label in labels if label)
+    precision = true_positive / predicted_positive if predicted_positive else 0.0
+    recall = true_positive / total_positive if total_positive else 0.0
+    f1 = 0.0 if (precision + recall) == 0 else 2 * precision * recall / (precision + recall)
+    return SelectionMetrics(precision=precision, recall=recall, f1=f1)
+
+
+def threshold_point_f1(point: ThresholdPoint) -> float:
+    if point.precision + point.recall == 0:
+        return 0.0
+    return 2 * point.precision * point.recall / (point.precision + point.recall)
+
+
+def pick_best_f1_threshold(points: list[ThresholdPoint]) -> ThresholdPoint:
+    """The threshold-tuning selection rule: maximize Jev's own F1 on train, independent of any other
+    backend's operating point. (Iso-recall, by contrast, lets a *comparison* target's recall decide
+    where on the curve to look — appropriate for reporting, wrong for picking Jev's own threshold.)
+    Ties broken by higher threshold (the more conservative choice, fewer false positives) to keep
+    selection deterministic."""
+
+    if not points:
+        raise ValueError("cannot pick a threshold from an empty sweep")
+
+    return max(points, key=lambda p: (threshold_point_f1(p), p.threshold))
+
+
+def bootstrap_mean_ci(
+    values: list[float], n_bootstrap: int = 10_000, seed: int = 0
+) -> tuple[float, float]:
+    """95% bootstrap CI on the mean of `values` (e.g. per-query F1) by resampling queries with
+    replacement — the generic version of the resampling already used for latency in
+    `paired_latency_comparison`, applied to a quality metric instead. With a handful of test queries
+    (this project's test split is 9), a bare mean F1 overstates confidence; always report this
+    alongside it, not instead of the paired-comparison machinery above."""
+
+    if not values:
+        return (0.0, 0.0)
+    arr = np.asarray(values)
+    rng = np.random.default_rng(seed)
+    n = len(arr)
+    boot_means = np.array(
+        [np.mean(rng.choice(arr, size=n, replace=True)) for _ in range(n_bootstrap)]
+    )
+    low, high = np.percentile(boot_means, [2.5, 97.5])
+    return float(low), float(high)
+
+
 @dataclass(frozen=True, slots=True)
 class LatencySummary:
     median_ms: float

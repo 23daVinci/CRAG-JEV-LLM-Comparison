@@ -58,6 +58,50 @@ decision backend differs. Everything below exists to make the N% and M% defensib
   construction (we inserted the injection strings ourselves), unlike every other label in this
   project.
 
+### Threshold tuning
+
+The first real 34-query run used Jev's **untuned vendor cookbook thresholds** and found a 29-point
+selected-set F1 gap against the LLM backend — exactly the scenario the pre-registered kill switch
+above exists for, and exactly why this methodology always called for "thresholds tuned on a dev
+split, reported on held-out test" rather than trusting an untuned number. `jev-bench tune-thresholds`
+(backed by `bench/tuning.py`) now implements that process:
+
+- **A frozen, stratified split** (`eval/splits.json`, generated once by
+  `scripts/split_eval_queries.py`): 60/20/20 train/val/test (27/9/9 of the 45 queries), stratified by
+  `type` so bridge:comparison ratios hold per split. `eval/injection_probes.jsonl` records inherit
+  their split from their source query's `query_id` — never an independent assignment — so both halves
+  of a clean/injected pair always land together.
+- **Tuning rule: maximize Jev's own F1 on TRAIN**, not iso-recall-matched to the LLM backend — iso-
+  recall (`precision_at_recall`) is the right tool for *reporting* Jev's curve against another
+  backend's single operating point, but using it to *pick* Jev's threshold would let the comparison
+  target's behavior dictate Jev's own operating point instead of finding Jev's best one.
+  `bench/tuning.py::collect_relevance_probabilities` calls `Decider.screen_passage` directly against
+  every document in a query's context — **not a graph run** — because a graph's retry loop stops as
+  soon as `grade_sufficiency` says "sufficient" (confirmed from the real run: 24/34 queries only
+  screened 5 of 10 docs), so graph-collected `passage_evidence` systematically under-samples whichever
+  documents a run happened to stop before reaching.
+- **VAL confirms, it does not re-search.** The picked threshold is replayed once against VAL via
+  `analysis.py::metrics_at_threshold`; if VAL's F1 drops more than 10 points from TRAIN's,
+  `tune-thresholds`'s dry-run output warns loudly rather than silently locking the threshold anyway —
+  at train/val sizes this small (27/9), that's a real risk, not a formality.
+- **TEST is scored exactly once**, read-only, at the locked threshold, via the normal
+  `jev-bench bench --split test` / `jev-bench injection-eval --split test` path — the tuning command
+  itself never touches the test split. `bench/report.py::_side_summary` now reports a 95% bootstrap CI
+  (`analysis.py::bootstrap_mean_ci`) alongside mean selected-set F1 for exactly this reason: **9 test
+  queries is small enough that one flipped query moves test F1 by about 11 points**, so a bare point
+  estimate on that split is not defensible — state the CI every time, not just when it's flattering.
+- **`relevance` and `injection` are tuned this way; `evidence`, `contradiction`, and `sufficiency` are
+  not** and stay at the vendor's cookbook defaults (`config/thresholds.yaml` documents this inline).
+  No ground truth exists in this project's eval data for "contains direct evidence" or "contradicts a
+  premise" as distinct from relevance; a sufficiency label derived from gold-title coverage is a
+  plausible future addition but was deliberately scoped out of this tuning pass rather than bundled in
+  speculatively.
+- **`tune-thresholds` is dry-run by default**, printing the TRAIN sweep summary, the picked threshold,
+  and VAL confirmation; it only writes `config/thresholds.yaml` with an explicit `--apply` flag. A
+  threshold change is a frozen methodological decision — consistent with this project's
+  pre-registration ethos elsewhere — so a human reviews the diff rather than the script silently
+  committing it.
+
 ### Latency statistics
 
 - **Median + IQR as the per-side headline**, never a bare mean (`analysis.py::summarize_latency`).
