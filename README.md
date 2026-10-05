@@ -74,6 +74,10 @@ kill-switch threshold (3 points) — the honest headline is **"dramatically fast
 real accuracy cost,"** not an unqualified win. See `docs/METHODOLOGY.md` for the full tuning
 methodology, the iso-recall comparison, and caveats on this result's precision at this split size.
 
+A static, shareable version of this result lives at [`web/results.html`](web/results.html) — open
+it directly in a browser (no server, no API keys, no network calls) for a presentation-ready summary
+of the same numbers above.
+
 ## Project layout
 
 - `src/jev_bench/graph/` — the one shared graph (`builder.py`, `nodes.py`, `state.py`)
@@ -81,7 +85,8 @@ methodology, the iso-recall comparison, and caveats on this result's precision a
   `fake.py` (`ScriptedDecider`, used by tests and `--dry-run`), `cassette.py` (record/replay)
 - `src/jev_bench/bench/` — `runner.py`, `analysis.py` (paired stats, PR curves), `report.py`,
   `injection_eval.py`
-- `src/jev_bench/api/` + `web/` — the live demo server and static frontend
+- `src/jev_bench/api/` + `web/` — the live demo server and static frontend, plus the standalone
+  `web/results.html` results summary (no server dependency)
 - `eval/` — the frozen, seeded HotpotQA slice (`dataset.jsonl`, `DATA_CARD.md` for license/
   provenance) and the synthetic injection-probe set
 - `docs/METHODOLOGY.md` — the authoritative record of what's implemented, what's deliberately
