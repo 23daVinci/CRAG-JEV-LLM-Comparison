@@ -5,9 +5,18 @@ from pathlib import Path
 
 import typer
 
-from jev_bench.bench.injection_eval import evaluate_injection_guard
+from jev_bench.bench.injection_eval import evaluate_injection_guard, load_probes
 from jev_bench.bench.report import build_report
 from jev_bench.bench.runner import ComparisonResult, QueryFailure, load_dataset, run_comparison
+from jev_bench.bench.tuning import (
+    TuningOutcome,
+    apply_threshold_update,
+    filter_probes_by_split,
+    filter_records_by_split,
+    load_splits,
+    tune_injection_threshold,
+    tune_relevance_threshold,
+)
 from jev_bench.config import load_settings
 from jev_bench.deciders.base import Decider
 from jev_bench.deciders.factory import build_groq_decider, build_jev_decider, with_cassette
@@ -49,10 +58,13 @@ def bench(
     out: Path | None = typer.Option(  # noqa: B008
         None, help="Write the markdown report to this path as well as stdout."
     ),
+    split: str | None = typer.Option(None, help="Restrict to train|val|test via eval/splits.json."),
 ) -> None:
     """Run both variants over the frozen eval set and print a benchmark report."""
 
     records = load_dataset()
+    if split:
+        records = filter_records_by_split(records, load_splits(), split)
     if limit:
         records = records[:limit]
 
@@ -97,6 +109,7 @@ def injection_eval(
     dry_run: bool = typer.Option(
         False, help="Use ScriptedDeciders instead of live Groq/Jev — no API keys needed."
     ),
+    split: str | None = typer.Option(None, help="Restrict to train|val|test via eval/splits.json."),
 ) -> None:
     """Score each backend's injection-screening guard against eval/injection_probes.jsonl — ground
     truth here is exact by construction (we inserted the injection strings ourselves), not human-
@@ -112,10 +125,14 @@ def injection_eval(
         decider_a = build_groq_decider(settings)
         decider_b = build_jev_decider(settings)
 
+    probes = load_probes()
+    if split:
+        probes = filter_probes_by_split(probes, load_splits(), split)
+
     async def _run() -> None:
         try:
             for name, decider in (("groq", decider_a), ("jev", decider_b)):
-                result = await evaluate_injection_guard(decider)
+                result = await evaluate_injection_guard(decider, probes)
                 typer.echo(
                     f"{name}: accuracy={result.accuracy:.2f} precision={result.precision:.2f} "
                     f"recall={result.recall:.2f}"
@@ -127,6 +144,62 @@ def injection_eval(
         finally:
             await decider_a.aclose()
             await decider_b.aclose()
+
+    asyncio.run(_run())
+
+
+def _report_outcome(name: str, outcome: TuningOutcome) -> None:
+    t = outcome.train_threshold
+    typer.echo(
+        f"{name}: TRAIN best threshold={t.threshold:.3f} precision={t.precision:.2f} "
+        f"recall={t.recall:.2f} f1={outcome.train_f1:.2f}"
+    )
+    v = outcome.val_metrics
+    typer.echo(
+        f"{name}: VAL   @ threshold={t.threshold:.3f} precision={v.precision:.2f} "
+        f"recall={v.recall:.2f} f1={v.f1:.2f}"
+    )
+    if outcome.val_f1_drop > 0.10:
+        typer.echo(
+            f"  WARNING: val F1 dropped {outcome.val_f1_drop:.2f} from train — threshold may be "
+            "overfit to train, not confirmed out-of-sample"
+        )
+
+
+@app.command("tune-thresholds")
+def tune_thresholds(
+    target: str = typer.Option("both", help="relevance | injection | both."),
+    apply: bool = typer.Option(
+        False, "--apply", help="Write config/thresholds.yaml. Default is dry-run (print only)."
+    ),
+) -> None:
+    """Tune Jev's relevance/injection thresholds: sweep TRAIN for the F1-maximizing threshold,
+    confirm it on VAL without re-sweeping. Never touches TEST — the final held-out comparison is a
+    separate `jev-bench bench --split test` / `jev-bench injection-eval --split test` run. Dry-run
+    by default; pass --apply to write the picked threshold(s) into config/thresholds.yaml."""
+
+    targets = ["relevance", "injection"] if target == "both" else [target]
+    if any(t not in ("relevance", "injection") for t in targets):
+        raise typer.BadParameter(f"target must be relevance|injection|both, got {target!r}")
+
+    settings = load_settings()
+    decider = build_jev_decider(settings)
+
+    async def _run() -> None:
+        try:
+            for t in targets:
+                if t == "relevance":
+                    outcome = await tune_relevance_threshold(decider)
+                else:
+                    outcome = await tune_injection_threshold(decider)
+                _report_outcome(t, outcome)
+                if apply:
+                    apply_threshold_update(t, outcome.train_threshold.threshold)
+                    typer.echo(
+                        f"  wrote {t}={outcome.train_threshold.threshold} to config/thresholds.yaml"
+                    )
+        finally:
+            await decider.aclose()
 
     asyncio.run(_run())
 

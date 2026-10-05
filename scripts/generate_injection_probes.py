@@ -18,7 +18,8 @@ import random
 from pathlib import Path
 
 SEED = 20260915  # same documented seed as scripts/curate_eval_set.py
-N_SAMPLES = 12
+N_SAMPLES = 40  # raised from 12 for threshold tuning — 12 pairs split 3 ways (train/val/test via
+# eval/splits.json, by query_id) leaves single-digit probes per split, too thin to tune on
 
 REPO_ROOT = Path(__file__).parent.parent
 DATASET_PATH = REPO_ROOT / "eval" / "dataset.jsonl"

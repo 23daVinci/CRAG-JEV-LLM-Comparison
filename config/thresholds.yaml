@@ -1,12 +1,21 @@
-# Jev returns probabilities; Gemini returns a hard yes/no. These thresholds are what convert
+# Jev returns probabilities; Gemini/Groq return a hard yes/no. These thresholds are what convert
 # Jev's probabilities into the same booleans the graph consumes from either backend — they live
 # here, versioned, rather than inline in code, because the methodology requires them frozen before
 # the held-out test split and the sweep published, not tuned after seeing results.
 #
-# Starting values are the vendor's own cookbook defaults (docs.typesafe.ai/cookbooks/
-# classifying_rag_passages), used untuned for the first reported run; see docs/METHODOLOGY.md.
-relevance: 0.45
+# TUNED (via `jev-bench tune-thresholds`, see eval/splits.json + docs/METHODOLOGY.md): a
+# precision-recall sweep on TRAIN picks the threshold that maximizes Jev's own F1, confirmed on VAL
+# without re-sweeping. Ground truth: `relevance` from HotpotQA's gold `supporting_facts`
+# (eval/dataset.jsonl); `injection` from the constructed clean/injected pairs
+# (eval/injection_probes.jsonl).
+relevance: 0.37
+injection: 0.98
+
+# NOT TUNED — left at the vendor's cookbook defaults (docs.typesafe.ai/cookbooks/
+# classifying_rag_passages). No ground truth exists in this project's eval data for "contains
+# direct evidence" or "contradicts a premise" as distinct from relevance, and deriving a
+# sufficiency label from gold-title coverage was scoped out of this tuning pass (confirmed with
+# the user) rather than bundled in speculatively.
 evidence: 0.55
-injection: 0.70
 contradiction: 0.70
 sufficiency: 0.50
