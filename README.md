@@ -54,21 +54,25 @@ changed twice during development (short version: free-tier quotas and CPU-bound 
 
 ## Example result
 
-A real (not simulated) run against live Groq and Jev APIs, 34 of 45 eval questions completed before
-hitting Groq's daily token quota (`reports/` — gitignored, regenerate with `jev-bench bench`):
+A real (not simulated) run against live Groq and Jev APIs, on the **held-out test split**
+(`eval/splits.json` — 9 of 45 eval queries never seen during threshold tuning). Jev's thresholds
+were tuned on a separate 27-query train split and confirmed on a 9-query val split beforehand; see
+`docs/METHODOLOGY.md`'s "Threshold tuning" section for the full process and the exact picked values:
 
 | | LLM (Groq, qwen3.8-27b) | Jev |
 |---|---|---|
-| Selection quality vs. gold (F1) | **0.861** | 0.569 |
-| Latency (median) | 31.7s | **1.2s** (~25x faster) |
-| Cost per 1,000 queries | $5.89 | **$0.24** (~25x cheaper) |
+| Selection quality vs. gold (F1, 95% bootstrap CI) | **0.830** [0.719, 0.926] | 0.667 [0.463, 0.852] |
+| Injection-guard precision/recall | 1.00 / 1.00 | 1.00 / 1.00 |
+| Latency (median) | 29.2s | **1.3s** (~22x faster) |
+| Cost per 1,000 queries | $5.52 | **$0.26** (~21x cheaper) |
 
-Latency difference is statistically significant (Wilcoxon p≈0, paired bootstrap 95% CI entirely
-positive). The quality gap (29 F1 points) exceeds this project's own pre-registered kill-switch
-threshold (3 points) — the honest headline is **"much faster and cheaper, but meaningfully less
-accurate at this untuned threshold,"** not an unqualified win. See `docs/METHODOLOGY.md` for the
-iso-recall comparison, caveats on this specific run (single pass, no repetitions, threshold not
-tuned on a held-out split), and what would need to change before trusting these numbers as final.
+Both F1 figures carry a 95% bootstrap CI over queries — at n=9, one flipped query moves F1 by about
+11 points, so read these as imprecisely-measured, not single-decimal-precision. Latency difference
+is statistically significant (Wilcoxon p=0.0078). The quality gap (16.3 F1 points) is narrower than
+an earlier untuned run's 29-point gap, but still exceeds this project's own pre-registered
+kill-switch threshold (3 points) — the honest headline is **"dramatically faster and cheaper, but a
+real accuracy cost,"** not an unqualified win. See `docs/METHODOLOGY.md` for the full tuning
+methodology, the iso-recall comparison, and caveats on this result's precision at this split size.
 
 ## Project layout
 

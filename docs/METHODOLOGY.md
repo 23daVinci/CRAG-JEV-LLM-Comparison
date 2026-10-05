@@ -102,6 +102,29 @@ split, reported on held-out test" rather than trusting an untuned number. `jev-b
   pre-registration ethos elsewhere — so a human reviews the diff rather than the script silently
   committing it.
 
+**Result of running this process (2026-10-05, live Jev + Groq APIs):** TRAIN picked
+`relevance=0.37` (precision=0.74, recall=0.83, F1=0.78), confirmed on VAL at F1=0.72 (a 6-point
+drop, well under the 10-point overfitting flag). `injection` picked `0.98` (TRAIN F1=1.00, VAL
+F1=1.00 — injection is a constructed, easily-separated signal, so a perfect score here is expected,
+not suspicious). Both values are applied in `config/thresholds.yaml`.
+
+The held-out **TEST** split (`jev-bench bench --split test` / `jev-bench injection-eval --split
+test`), scored exactly once at these locked thresholds:
+
+| | Groq (qwen3.8-27b) | Jev |
+|---|---|---|
+| Selected-set F1 (n=9, 95% bootstrap CI) | 0.830 [0.719, 0.926] | 0.667 [0.463, 0.852] |
+| Injection guard, precision/recall (n=8 probes) | 1.00 / 1.00 | 1.00 / 1.00 |
+| Latency (median) | 29,170 ms | 1,306 ms (~22x faster) |
+| Cost per 1,000 queries | $5.52 | $0.26 (~21x cheaper) |
+
+Latency difference is statistically significant (Wilcoxon p=0.0078). The quality gap (16.3 F1
+points) is narrower than the untuned run's 29-point gap, but still exceeds the pre-registered
+kill-switch threshold (3 points) — the honest headline is **"dramatically faster and cheaper, but a
+real accuracy cost,"** same conclusion as the untuned run, just a smaller gap. The two F1 CIs
+overlap substantially, which is the direct consequence of n=9 — this result should be read as "a
+real but imprecisely-measured quality cost," not as two cleanly-separated numbers.
+
 ### Latency statistics
 
 - **Median + IQR as the per-side headline**, never a bare mean (`analysis.py::summarize_latency`).
