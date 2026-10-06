@@ -18,3 +18,7 @@ htmlcov/
 
 # Raw HotpotQA download — only the curated slice in eval/dataset.jsonl is committed
 /tmp_hotpot_dev_distractor_v1.json
+
+# Local MLflow tracking stores
+mlruns/
+mlflow.db

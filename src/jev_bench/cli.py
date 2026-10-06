@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import asdict
 from pathlib import Path
 
 import typer
@@ -67,6 +68,17 @@ def bench(
         None, help="Write the markdown report to this path as well as stdout."
     ),
     split: str | None = typer.Option(None, help="Restrict to train|val|test via eval/splits.json."),
+    track: bool = typer.Option(
+        False,
+        "--track",
+        help="Record this run in MLflow: per-query scores written as each query finishes, plus "
+        "experiment metadata, paired stats, failures and the report. View with `mlflow ui "
+        "--backend-store-uri sqlite:///mlflow.db`.",
+    ),
+    experiment: str = typer.Option("jev-bench", help="MLflow experiment name (with --track)."),
+    run_name: str | None = typer.Option(
+        None, help="MLflow run name (with --track). Defaults to '<split or all>-<timestamp>'."
+    ),
 ) -> None:
     """Run both variants over the frozen eval set and print a benchmark report.
 
@@ -99,25 +111,75 @@ def bench(
 
     cfg = GraphConfig()
 
+    tracker = None
+    if track:
+        from datetime import datetime
+
+        from jev_bench.bench.tracking import BenchTracker, git_commit
+        from jev_bench.deciders.jev import JevThresholds
+
+        settings_for_params = load_settings()
+        params: dict[str, object] = {
+            "split": split or "all",
+            "n_queries_requested": len(records),
+            "limit": limit,
+            "dry_run": dry_run,
+            "cassette_mode": cassette_mode,
+            "variant_a": decider_a.name,
+            "variant_b": decider_b.name,
+            "groq_model": settings_for_params.groq.model,
+            "jev_model": settings_for_params.jev.model,
+            "retriever": retriever.name,
+            "embedding_model": settings_for_params.ollama.embedding_model,
+            "batch_size": cfg.batch_size,
+            "max_attempts": cfg.max_attempts,
+            "git_commit": git_commit(),
+            **{f"jev_threshold_{k}": v for k, v in asdict(JevThresholds.load()).items()},
+        }
+        tracker = BenchTracker(
+            experiment=experiment,
+            run_name=run_name or f"{split or 'all'}-{datetime.now():%Y%m%d-%H%M%S}",
+            params=params,
+            variant_names=(decider_a.name, decider_b.name),
+        )
+
     async def _run() -> tuple[list[ComparisonResult], list[QueryFailure]]:
         try:
-            return await run_comparison(decider_a, decider_b, retriever, records=records, cfg=cfg)
+            return await run_comparison(
+                decider_a,
+                decider_b,
+                retriever,
+                records=records,
+                cfg=cfg,
+                on_result=tracker.record if tracker else None,
+                on_failure=tracker.record_failure if tracker else None,
+            )
         finally:
             await decider_a.aclose()
             await decider_b.aclose()
 
-    results, failures = asyncio.run(_run())
+    try:
+        results, failures = asyncio.run(_run())
+    except BaseException:
+        if tracker:
+            tracker.finish(ok=False)
+        raise
     if failures:
         typer.echo(f"WARNING: {len(failures)}/{len(records)} queries failed and were skipped:")
         for failure in failures:
             typer.echo(f"  {failure.query_id}: {failure.error}")
     if not results:
         typer.echo("No queries succeeded — nothing to report.")
+        if tracker:
+            tracker.finish(ok=False)
         raise typer.Exit(code=1)
     report = build_report(results)
     typer.echo(report)
     if out:
-        out.write_text(report)
+        out.write_text(report, encoding="utf-8")
+    if tracker:
+        tracker.finish(report)
+        typer.echo(f"MLflow run recorded (parent run id: {tracker.parent_run_id}).")
 
 
 @app.command("injection-eval")

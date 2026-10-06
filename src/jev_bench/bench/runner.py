@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -90,6 +91,8 @@ async def run_comparison(
     retriever: Retriever,
     records: list[Record] | None = None,
     cfg: GraphConfig | None = None,
+    on_result: Callable[[ComparisonResult], None] | None = None,
+    on_failure: Callable[[QueryFailure], None] | None = None,
 ) -> tuple[list[ComparisonResult], list[QueryFailure]]:
     """A and B run per-query, interleaved (A then B, then the next query) rather than all-A-then-
     all-B, so provider-side drift (rate limiting, latency variance over time) lands on both sides
@@ -100,6 +103,10 @@ async def run_comparison(
     wall-clock time already spent on the run, with nothing to show for it, since `build_report` only
     assembles output after the full loop finishes. Failures are collected and returned alongside the
     successes rather than silently dropped, so the caller can see exactly what was skipped and why.
+
+    `on_result`/`on_failure` fire as each query finishes, not at the end, so a caller (e.g. the
+    MLflow tracker) can persist per-query data incrementally — a crash or a Ctrl-C partway through
+    no longer loses the queries that already completed.
     """
 
     records = records if records is not None else load_dataset()
@@ -118,17 +125,19 @@ async def run_comparison(
                     "retrieval must never be a variable between variants"
                 )
         except Exception as exc:  # noqa: BLE001 — one query's failure must not sink the run
-            failures.append(
-                QueryFailure(query_id=record["id"], error=f"{type(exc).__name__}: {exc}")
-            )
+            failure = QueryFailure(query_id=record["id"], error=f"{type(exc).__name__}: {exc}")
+            failures.append(failure)
+            if on_failure is not None:
+                on_failure(failure)
             continue
-        results.append(
-            ComparisonResult(
-                query_id=record["id"],
-                question=record["question"],
-                gold_titles=frozenset(record["gold_titles"]),
-                a=result_a,
-                b=result_b,
-            )
+        comparison = ComparisonResult(
+            query_id=record["id"],
+            question=record["question"],
+            gold_titles=frozenset(record["gold_titles"]),
+            a=result_a,
+            b=result_b,
         )
+        results.append(comparison)
+        if on_result is not None:
+            on_result(comparison)
     return results, failures
