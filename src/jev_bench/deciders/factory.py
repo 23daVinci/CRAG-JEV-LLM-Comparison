@@ -5,7 +5,7 @@ from pathlib import Path
 import httpx2
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_groq import ChatGroq
-from langchain_ollama import ChatOllama
+from langchain_ollama import ChatOllama, OllamaEmbeddings
 from pydantic import SecretStr
 from typesafe_sdk import AsyncTypeSafeClient, RetryPolicy
 
@@ -16,6 +16,7 @@ from jev_bench.deciders.gemini import GeminiDecider
 from jev_bench.deciders.groq import GroqDecider
 from jev_bench.deciders.jev import JevDecider, JevThresholds
 from jev_bench.deciders.ollama import OllamaDecider
+from jev_bench.retrieval.store import OllamaEmbeddingRetriever
 from jev_bench.telemetry.pricing import PriceBook
 
 
@@ -93,6 +94,14 @@ def build_jev_decider(settings: Settings, price_book: PriceBook | None = None) -
     return JevDecider(
         client, JevThresholds.load(), price_book or PriceBook.load(), settings.jev.model
     )
+
+
+def build_ollama_embedding_retriever(settings: Settings) -> OllamaEmbeddingRetriever:
+    embeddings = OllamaEmbeddings(
+        model=settings.ollama.embedding_model,
+        base_url=settings.ollama.base_url,
+    )
+    return OllamaEmbeddingRetriever(embeddings)
 
 
 def with_cassette(decider: Decider, cassette_dir: Path, mode: str, model: str = "") -> Decider:

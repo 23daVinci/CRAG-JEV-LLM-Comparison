@@ -8,7 +8,7 @@ from typing import Any
 from jev_bench.deciders.base import Decider
 from jev_bench.graph.builder import GraphConfig, build_graph
 from jev_bench.graph.state import initial_state
-from jev_bench.retrieval.store import hash_doc_pool
+from jev_bench.retrieval.store import Retriever, hash_doc_pool
 from jev_bench.telemetry.model import NodeSpan
 
 DEFAULT_DATASET_PATH = Path(__file__).parent.parent.parent.parent / "eval" / "dataset.jsonl"
@@ -74,16 +74,20 @@ async def _run_one(app: CompiledGraph, record: Record) -> QueryResult:
 
 
 async def run_dataset(
-    decider: Decider, records: list[Record] | None = None, cfg: GraphConfig | None = None
+    decider: Decider,
+    retriever: Retriever,
+    records: list[Record] | None = None,
+    cfg: GraphConfig | None = None,
 ) -> list[QueryResult]:
     records = records if records is not None else load_dataset()
-    app = build_graph(decider, cfg=cfg)
+    app = build_graph(decider, retriever, cfg=cfg)
     return [await _run_one(app, record) for record in records]
 
 
 async def run_comparison(
     decider_a: Decider,
     decider_b: Decider,
+    retriever: Retriever,
     records: list[Record] | None = None,
     cfg: GraphConfig | None = None,
 ) -> tuple[list[ComparisonResult], list[QueryFailure]]:
@@ -99,8 +103,8 @@ async def run_comparison(
     """
 
     records = records if records is not None else load_dataset()
-    app_a = build_graph(decider_a, cfg=cfg)
-    app_b = build_graph(decider_b, cfg=cfg)
+    app_a = build_graph(decider_a, retriever, cfg=cfg)
+    app_b = build_graph(decider_b, retriever, cfg=cfg)
     results: list[ComparisonResult] = []
     failures: list[QueryFailure] = []
     for record in records:

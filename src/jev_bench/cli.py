@@ -19,9 +19,16 @@ from jev_bench.bench.tuning import (
 )
 from jev_bench.config import load_settings
 from jev_bench.deciders.base import Decider
-from jev_bench.deciders.factory import build_groq_decider, build_jev_decider, with_cassette
+from jev_bench.deciders.factory import (
+    build_groq_decider,
+    build_jev_decider,
+    build_ollama_embedding_retriever,
+    with_cassette,
+)
 from jev_bench.deciders.fake import ScriptedDecider
 from jev_bench.graph.builder import GraphConfig
+from jev_bench.retrieval.fake import ScriptedRetriever
+from jev_bench.retrieval.store import Retriever
 
 app = typer.Typer(
     help="A/B benchmark of an agentic document-retrieval workflow: Groq (qwen3.8-27b) vs Jev."
@@ -60,7 +67,12 @@ def bench(
     ),
     split: str | None = typer.Option(None, help="Restrict to train|val|test via eval/splits.json."),
 ) -> None:
-    """Run both variants over the frozen eval set and print a benchmark report."""
+    """Run both variants over the frozen eval set and print a benchmark report.
+
+    Live (non-dry-run) ranking needs a local Ollama server with `nomic-embed-text` pulled
+    (`ollama pull nomic-embed-text`) — document ranking is semantic (embedding cosine similarity),
+    not TF-IDF. `--dry-run` needs none of this; it uses a deterministic scripted ranking instead.
+    """
 
     records = load_dataset()
     if split:
@@ -70,9 +82,11 @@ def bench(
 
     decider_a: Decider
     decider_b: Decider
+    retriever: Retriever
     if dry_run:
         decider_a = ScriptedDecider(name="groq")
         decider_b = ScriptedDecider(name="jev")
+        retriever = ScriptedRetriever()
     else:
         settings = load_settings()
         decider_a = build_groq_decider(settings)
@@ -80,12 +94,13 @@ def bench(
         decider_b = with_cassette(
             jev_decider, DEFAULT_CASSETTE_DIR, cassette_mode, model=settings.jev.model
         )
+        retriever = build_ollama_embedding_retriever(settings)
 
     cfg = GraphConfig()
 
     async def _run() -> tuple[list[ComparisonResult], list[QueryFailure]]:
         try:
-            return await run_comparison(decider_a, decider_b, records=records, cfg=cfg)
+            return await run_comparison(decider_a, decider_b, retriever, records=records, cfg=cfg)
         finally:
             await decider_a.aclose()
             await decider_b.aclose()

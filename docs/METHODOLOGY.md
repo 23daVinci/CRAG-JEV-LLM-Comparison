@@ -18,6 +18,19 @@ decision backend differs. Everything below exists to make the N% and M% defensib
   `bench/runner.py::run_comparison` hashes the fixture (`retrieval/store.py::hash_doc_pool`) before
   and after both runs and raises if it changed — `tests/unit/test_runner_fixture_integrity.py`
   exercises this with a decider that deliberately mutates the shared fixture.
+- **Semantic ranking, not lexical.** `retrieve` orders each query's 10-document pool by cosine
+  similarity between embeddings from a local Ollama model (`nomic-embed-text`,
+  `retrieval/store.py::OllamaEmbeddingRetriever`), not TF-IDF term overlap — replacing a prior
+  hand-rolled TF-IDF ranker. `build_graph(decider, retriever, cfg)` takes `retriever` as a required
+  argument with no implicit default (same reasoning as `decider`), so this is still a fixed input
+  shared by both variants, never something either decider can independently influence. Ranking
+  quality was never the thing under test here — the eval set's 10-document pool per query is itself
+  the hard part of retrieval HotpotQA already solved by construction — so this change doesn't alter
+  what the benchmark measures; it replaces one deterministic, offline ranking method with another
+  (now semantic, at the cost of needing a locally running Ollama server with the embedding model
+  pulled). `--dry-run` and the full test suite use `retrieval/fake.py::ScriptedRetriever` instead —
+  a deterministic stub, same role as `ScriptedDecider` — specifically so they stay zero-setup and
+  don't require Ollama to be running just to exercise graph wiring or decision logic.
 - **Shared prompt wording.** Both deciders build their questions from the same constants in
   `graph/prompts.py`, not inlined text — `tests/unit/test_prompts_shared.py` asserts this
   mechanically (checks both decider source files reference every required constant).

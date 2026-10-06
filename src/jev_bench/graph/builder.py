@@ -20,15 +20,20 @@ class GraphConfig:
 
 def build_graph(
     decider: Decider,
-    retriever: Retriever | None = None,
+    retriever: Retriever,
     cfg: GraphConfig | None = None,
 ) -> CompiledStateGraph[RetrievalState, None, RetrievalState, RetrievalState]:
     """The one graph builder. Every variant — Gemini-backed, Jev-backed, or a test's
     ScriptedDecider — goes through this exact function; only `decider` changes. There is no
     provider branching anywhere below this line (enforced by tests/test_topology.py and an AST
-    scan in tests/unit), so the two benchmark variants are provably the same graph."""
+    scan in tests/unit), so the two benchmark variants are provably the same graph.
 
-    retriever = retriever or Retriever()
+    `retriever` is required, with no implicit default, for the same reason `decider` is: both
+    variants in a comparison must read the identical ranking, so the caller must say which one
+    that is (e.g. `retrieval.fake.ScriptedRetriever` for tests/`--dry-run`,
+    `OllamaEmbeddingRetriever` for a live run) rather than one being silently assumed.
+    """
+
     cfg = cfg or GraphConfig()
 
     graph: StateGraph[RetrievalState, None, RetrievalState, RetrievalState] = StateGraph(

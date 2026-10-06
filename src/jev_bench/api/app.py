@@ -17,9 +17,14 @@ from jev_bench.bench.analysis import score_selection
 from jev_bench.bench.runner import Record, load_dataset
 from jev_bench.config import load_settings
 from jev_bench.deciders.base import Decider
-from jev_bench.deciders.factory import build_gemini_decider, build_jev_decider
+from jev_bench.deciders.factory import (
+    build_gemini_decider,
+    build_jev_decider,
+    build_ollama_embedding_retriever,
+)
 from jev_bench.graph.builder import build_graph
 from jev_bench.graph.state import initial_state
+from jev_bench.retrieval.store import Retriever
 from jev_bench.telemetry.emitter import RunEmitter
 from jev_bench.telemetry.pricing import PriceBook
 
@@ -84,9 +89,9 @@ async def run_events(run_id: str) -> EventSourceResponse:
 
 
 async def _pump_variant(
-    decider: Decider, record: Record, variant: str, emitter: RunEmitter
+    decider: Decider, retriever: Retriever, record: Record, variant: str, emitter: RunEmitter
 ) -> None:
-    graph = build_graph(decider)
+    graph = build_graph(decider, retriever)
     state = initial_state(record["question"], record["context"])
     final_state: dict[str, Any] = dict(state)
     async for mode, chunk in graph.astream(state, stream_mode=["updates", "values"]):
@@ -123,14 +128,17 @@ async def _execute_run(run_id: str, record: Record, emitter: RunEmitter) -> None
     price_book = PriceBook.load()
     gemini_decider = build_gemini_decider(settings, price_book)
     jev_decider = build_jev_decider(settings, price_book)
+    # One shared instance for both variants — retrieval must stay a fixed input to the comparison,
+    # never something either decider can independently influence.
+    retriever = build_ollama_embedding_retriever(settings)
 
     emitter.emit("gemini", "run_started", {"question": record["question"]})
     emitter.emit("jev", "run_started", {"question": record["question"]})
 
     try:
         await asyncio.gather(
-            _pump_variant(gemini_decider, record, "gemini", emitter),
-            _pump_variant(jev_decider, record, "jev", emitter),
+            _pump_variant(gemini_decider, retriever, record, "gemini", emitter),
+            _pump_variant(jev_decider, retriever, record, "jev", emitter),
         )
     except Exception as exc:  # noqa: BLE001 — surfaced to the UI, not swallowed
         emitter.emit("gemini", "decision_error", {"message": str(exc)})

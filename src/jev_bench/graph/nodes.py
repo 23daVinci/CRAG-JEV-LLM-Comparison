@@ -18,7 +18,7 @@ Node = Callable[[RetrievalState], Awaitable[dict[str, Any]]]
 def make_retrieve_node(retriever: Retriever, cfg: GraphConfig) -> Node:
     async def retrieve(state: RetrievalState) -> dict[str, Any]:
         span = NodeSpanRecorder("retrieve", "shared")
-        ranked_ids = state["ranked_ids"] or retriever.rank(state["query"], state["doc_pool"])
+        ranked_ids = state["ranked_ids"] or await retriever.rank(state["query"], state["doc_pool"])
         screened = set(state["screened_ids"])
         remaining = [doc_id for doc_id in ranked_ids if doc_id not in screened]
         batch = remaining[: cfg.batch_size]
