@@ -181,10 +181,49 @@ query moved the mean by 0.10. So a separate **1,000-question `test` split** was 
   only.
 
 **Feasibility, stated plainly:** a full Groq-vs-Jev run over 1,000 queries is expensive. Groq costs
-about $0.007 and ~26 s per query in the pilot (~4-5k tokens per query), i.e. roughly $7, 7+ hours
-sequentially, and ~4-5M tokens — far beyond Groq's free-tier 200k tokens/day limit, so it needs a
+about $0.007 and ~26 s per query in the pilot (measured ~6k tokens per query), i.e. roughly $7, 7+ hours
+sequentially, and ~6M tokens — far beyond Groq's free-tier 200k tokens/day limit, so it needs a
 paid tier. Jev alone is about $0.25 and ~1 hour for the same 1,000 queries. Evaluating Jev's
 quality against gold needs no Groq calls at all; only the head-to-head comparison does.
+
+**Results (2026-10-06, live APIs).** Jev alone on all 1,000 test queries (`jev-bench bench --only jev
+--split test --track`, 0 failures, thresholds untouched):
+
+| Jev, n=1,000 | |
+|---|---|
+| Selected-set F1 (95% bootstrap CI) | 0.719 [0.703, 0.735] |
+| Precision / recall | 0.776 / 0.747 |
+| Bridge (n=710) / comparison (n=290) F1 | 0.736 [0.718, 0.754] / 0.678 [0.643, 0.711] |
+| Injection guard, 200 probes (100 pairs) | precision/recall/accuracy 1.00 |
+| Median latency / total cost | 3.5 s / $0.23 per 1,000 queries |
+
+Groq-vs-Jev head-to-head, restricted to the first 20 test queries (the split is pre-shuffled, so
+this is a random sample) because of Groq's free-tier limit; one query was skipped by a Groq request
+timeout, so n=19 (Groq was not run on the injection set):
+
+| n=19 | Groq (qwen3.8-27b) | Jev |
+|---|---|---|
+| Selected-set F1 (95% bootstrap CI) | 0.686 [0.559, 0.809] | 0.640 [0.541, 0.729] |
+| Precision / recall | 0.64 / 0.82 | 0.75 / 0.66 |
+| Median latency | 29.4 s (~12x slower) | 2.5 s |
+| Cost per 1,000 queries | $5.18 (~25x more) | $0.21 |
+
+Paired F1 difference (Groq minus Jev): +0.046, 95% CI [-0.029, +0.127], Wilcoxon p=0.21; Groq
+higher on 6 queries, Jev on 5, tied on 8. Paired latency difference is significant (p<0.0001).
+
+How to read this: **Jev on its own is tightly measured** (CI ±0.016 at n=1,000) — about 0.72 F1 with
+minimal tuning, a perfect injection guard, ~3.5 s and ~$0.23 per 1,000 queries. **The Groq
+head-to-head is not.** The point-estimate gap (+4.6 F1 points for Groq) exceeds the pre-registered
+3-point kill switch, but the paired CI includes zero and n=19, so a Groq accuracy advantage is
+plausible, not established; the speed (~12x) and cost (~25x) advantages are clear. Jev's F1 on the
+19 head-to-head queries (0.640) is lower than on all 1,000 (0.719) and Groq's CI ([0.559, 0.809])
+contains Jev's 1,000-query mean, so these 19 are probably a somewhat harder-than-average draw; the
+data cannot say whether Groq would also exceed 0.72 on the full set. The earlier 10-query pilot
+(Groq 0.677 vs. Jev 0.533; paired difference +0.144, CI [-0.020, +0.327]) is superseded: its Jev
+estimate sat well below the 1,000-query CI, a concrete illustration of how unreliable n=10 is. The
+head-to-head latency/cost ratios here (~12x / ~25x) are also smaller than the pilot's headline
+~22x for the original TF-IDF setup; the shared semantic-retrieval step adds a fixed cost to both.
+Closing the Groq comparison needs a paid Groq tier (about $7 and 7+ hours for 1,000 queries).
 
 ### Latency statistics
 

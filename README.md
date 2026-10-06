@@ -54,31 +54,41 @@ changed twice during development (short version: free-tier quotas and CPU-bound 
 
 ## Example result
 
-A real (not simulated) run against live Groq and Jev APIs, on the **10-query pilot split**
-(`pilot` in `eval/splits.json` — held out from threshold tuning; a larger 1,000-question `test`
-split has since been added for a properly powered evaluation). Jev's thresholds
-were tuned on a separate 80-query train split and confirmed on a 10-query val split beforehand; see
-`docs/METHODOLOGY.md`'s "Threshold tuning" section for the full process and the exact picked values
-(relevance 0.40, injection 0.50). Document ranking is semantic (local embeddings), shared by both
-variants:
+The headline evaluation is a **1,000-question held-out test set** (`test` in `eval/splits.json`):
+HotpotQA questions that were never used for tuning and are disjoint from the tuning data. Jev's two
+thresholds (relevance 0.40, injection 0.50) were tuned on 80 train / 10 val queries and **not
+re-tuned** for this set, so it measures how the tuned system generalizes with minimal tuning.
+Document ranking is semantic (local embeddings) and shared by both backends. See
+`docs/METHODOLOGY.md` for the full process.
+
+**Jev on all 1,000 test queries** (live API, 0 failures):
+
+| | Jev |
+|---|---|
+| Selection quality vs. gold (F1, 95% bootstrap CI) | **0.719** [0.703, 0.735] |
+| Precision / recall | 0.776 / 0.747 |
+| F1 by question type | bridge 0.736 (n=710), comparison 0.678 (n=290) |
+| Injection guard (200 probes), precision/recall | 1.00 / 1.00 |
+| Median latency / cost for all 1,000 queries | 3.5s / $0.23 |
+
+**Groq vs. Jev head-to-head — small sample.** Groq's free tier allows only about 30 queries a day
+(measured: ~6k tokens per query against a 200k/day cap), so the head-to-head runs on 19 of the test
+queries (20 were run; 1 was skipped on a Groq timeout). Groq was not run on the injection test.
 
 | | LLM (Groq, qwen3.8-27b) | Jev |
 |---|---|---|
-| Selection quality vs. gold (F1, 95% bootstrap CI) | **0.677** [0.534, 0.817] | 0.533 [0.380, 0.670] |
-| Injection-guard precision/recall | 1.00 / 1.00 | 1.00 / 1.00 |
-| Latency (median) | 26.2s | **3.5s** (~7.5x faster) |
-| Cost per 1,000 queries | $6.87 | **$0.24** (~28x cheaper) |
+| Selection quality vs. gold (F1, 95% bootstrap CI) | **0.686** [0.559, 0.809] | 0.640 [0.541, 0.729] |
+| Latency (median) | 29.4s | **2.5s** (~12x faster) |
+| Cost per 1,000 queries | $5.18 | **$0.21** (~25x cheaper) |
 
-Speed and cost are clear: the latency difference is statistically significant (paired Wilcoxon
-p=0.0020). Quality is not settled. The paired per-query F1 difference (Groq minus Jev) is +0.144
-with a 95% CI of [-0.020, +0.327] (p=0.22; Groq scored higher on 5 queries, Jev on 1, 4 tied). The
-point estimate is well past this project's pre-registered 3-point kill switch, but the interval
-includes zero, so at n=10 the accuracy cost is likely, not established — and a single query moves
-the mean F1 by 0.10. The honest headline is **"much faster and cheaper, with a likely accuracy cost
-that this sample size can't confirm,"** not an unqualified win in either direction. Jev's weakness
-here is recall (0.55 vs. 0.85). A first attempt at this run completed only 8 of 10 queries (network
-errors) and was discarded; the numbers above are the complete second run, recorded per query in
-MLflow (`jev-bench bench --track`). See `docs/METHODOLOGY.md` for the tuning methodology and caveats.
+Speed and cost are clear (paired latency Wilcoxon p<0.0001). Quality is not settled: the paired
+per-query F1 difference (Groq minus Jev) is +0.046 with a 95% CI of [-0.029, +0.127] (p=0.21; Groq
+higher on 6 queries, Jev on 5, 8 tied). The point estimate exceeds this project's pre-registered
+3-point kill switch, but the interval includes zero, so Groq's edge on accuracy is possible, not
+established — and with only 19 queries it can't be. What *is* tightly measured is Jev on its own:
+F1 0.719 ± 0.016. An earlier 10-query pilot (Groq 0.677 vs. Jev 0.533) was too small to conclude
+anything and is superseded by the numbers above. Every per-query score is recorded in MLflow
+(`jev-bench bench --track`).
 
 A static, shareable version of this result lives at [`web/results.html`](web/results.html) — open
 it directly in a browser (no server, no API keys, no network calls) for a presentation-ready summary
