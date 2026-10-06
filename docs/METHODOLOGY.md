@@ -80,7 +80,7 @@ split, reported on held-out test" rather than trusting an untuned number. `jev-b
 (backed by `bench/tuning.py`) now implements that process:
 
 - **A frozen, stratified split** (`eval/splits.json`, generated once by
-  `scripts/split_eval_queries.py`): 60/20/20 train/val/test (27/9/9 of the 45 queries), stratified by
+  `scripts/split_eval_queries.py`): 80/10/10 train/val/test (80/10/10 of the 100 queries; originally 60/20/20 of 45), stratified by
   `type` so bridge:comparison ratios hold per split. `eval/injection_probes.jsonl` records inherit
   their split from their source query's `query_id` — never an independent assignment — so both halves
   of a clean/injected pair always land together.
@@ -96,12 +96,12 @@ split, reported on held-out test" rather than trusting an untuned number. `jev-b
 - **VAL confirms, it does not re-search.** The picked threshold is replayed once against VAL via
   `analysis.py::metrics_at_threshold`; if VAL's F1 drops more than 10 points from TRAIN's,
   `tune-thresholds`'s dry-run output warns loudly rather than silently locking the threshold anyway —
-  at train/val sizes this small (27/9), that's a real risk, not a formality.
+  at train/val sizes this small (80/10), that's a real risk, not a formality.
 - **TEST is scored exactly once**, read-only, at the locked threshold, via the normal
   `jev-bench bench --split test` / `jev-bench injection-eval --split test` path — the tuning command
   itself never touches the test split. `bench/report.py::_side_summary` now reports a 95% bootstrap CI
-  (`analysis.py::bootstrap_mean_ci`) alongside mean selected-set F1 for exactly this reason: **9 test
-  queries is small enough that one flipped query moves test F1 by about 11 points**, so a bare point
+  (`analysis.py::bootstrap_mean_ci`) alongside mean selected-set F1 for exactly this reason: **10 test
+  queries is small enough that one flipped query moves test F1 by 0.10**, so a bare point
   estimate on that split is not defensible — state the CI every time, not just when it's flattering.
 - **`relevance` and `injection` are tuned this way; `evidence`, `contradiction`, and `sufficiency` are
   not** and stay at the vendor's cookbook defaults (`config/thresholds.yaml` documents this inline).
@@ -126,28 +126,38 @@ split, reported on held-out test" rather than trusting an untuned number. `jev-b
   pre-registration ethos elsewhere — so a human reviews the diff rather than the script silently
   committing it.
 
-**Result of running this process (2026-10-05, live Jev + Groq APIs):** TRAIN picked
-`relevance=0.37` (precision=0.74, recall=0.83, F1=0.78), confirmed on VAL at F1=0.72 (a 6-point
-drop, well under the 10-point overfitting flag). `injection` picked `0.98` (TRAIN F1=1.00, VAL
-F1=1.00 — injection is a constructed, easily-separated signal, so a perfect score here is expected,
-not suspicious). Both values are applied in `config/thresholds.yaml`.
+**Result of running this process (2026-10-05, live Jev + Groq APIs, 100-question set, 80/10/10
+split):** the TRAIN sweep over the fixed grid picked `relevance=0.40` (precision=0.69, recall=0.77,
+F1=0.73), confirmed on VAL at F1=0.69 (a 4-point drop, under the 10-point overfitting flag). An
+earlier dry-run picked 0.35 — F1 at 0.35 and 0.40 differs by about 0.02, inside run-to-run noise of
+the live API, so either is defensible. `injection` scored F1=1.00 at every threshold from 0.05 to 0.95
+on TRAIN (and 1.00 on VAL), so the plateau-midpoint rule picked `0.50`. Both values are applied in
+`config/thresholds.yaml`. (An earlier tuning pass on the original 45-question/60-20-20 split picked
+0.37 and 0.98; those numbers are superseded.)
 
 The held-out **TEST** split (`jev-bench bench --split test` / `jev-bench injection-eval --split
-test`), scored exactly once at these locked thresholds:
+test`), scored once at these locked thresholds. A first attempt completed only 8 of 10 queries
+(Groq network errors) and was discarded without being used; the table below is the complete second
+run, with every query's scores recorded in MLflow:
 
 | | Groq (qwen3.8-27b) | Jev |
 |---|---|---|
-| Selected-set F1 (n=9, 95% bootstrap CI) | 0.830 [0.719, 0.926] | 0.667 [0.463, 0.852] |
-| Injection guard, precision/recall (n=8 probes) | 1.00 / 1.00 | 1.00 / 1.00 |
-| Latency (median) | 29,170 ms | 1,306 ms (~22x faster) |
-| Cost per 1,000 queries | $5.52 | $0.26 (~21x cheaper) |
+| Selected-set F1 (n=10, 95% bootstrap CI) | 0.677 [0.534, 0.817] | 0.533 [0.380, 0.670] |
+| Precision / recall | 0.63 / 0.85 | 0.59 / 0.55 |
+| Injection guard, precision/recall (n=10 probes) | 1.00 / 1.00 | 1.00 / 1.00 |
+| Latency (median) | 26,155 ms | 3,509 ms (~7.5x faster) |
+| Cost per 1,000 queries | $6.87 | $0.24 (~28x cheaper) |
 
-Latency difference is statistically significant (Wilcoxon p=0.0078). The quality gap (16.3 F1
-points) is narrower than the untuned run's 29-point gap, but still exceeds the pre-registered
-kill-switch threshold (3 points) — the honest headline is **"dramatically faster and cheaper, but a
-real accuracy cost,"** same conclusion as the untuned run, just a smaller gap. The two F1 CIs
-overlap substantially, which is the direct consequence of n=9 — this result should be read as "a
-real but imprecisely-measured quality cost," not as two cleanly-separated numbers.
+Paired per-query comparison: latency difference is statistically significant (Wilcoxon p=0.0020).
+F1 difference (Groq minus Jev) is +0.144, 95% bootstrap CI [-0.020, +0.327], Wilcoxon p=0.22; Groq
+scored higher on 5 queries, Jev on 1, 4 tied. The point-estimate gap is well past the pre-registered
+kill-switch threshold (3 points), but the interval includes zero, so the honest reading is **"much
+faster and cheaper, with a likely accuracy cost (driven by Jev's lower recall, 0.55 vs. 0.85) that a
+10-query test split cannot confirm"** — not an unqualified win for either backend. The speed
+advantage shrank from ~22x on the old setup to ~7.5x; the most likely reason is the new semantic
+retrieval step, whose embedding call is a fixed cost paid by both variants (not verified with
+per-step timings). Groq's F1 on the same queries moved by about 0.06 between the discarded 8-query
+attempt and the complete run, a reminder of how much these numbers vary run to run.
 
 ### Latency statistics
 
@@ -241,7 +251,7 @@ real but imprecisely-measured quality cost," not as two cleanly-separated number
 - **n≈30 repetitions per query.** The runner executes each query once per variant per run, not
   repeated. The plan's fuller design (20-40 queries × n=30 reps × 4 configs, 3 discarded warm-ups)
   was scoped down given the confirmed Gemini free-tier latency (~5-12s/call) and 1,000 RPD cap — a
-  single full pass over the 45-query set already costs real wall-clock time (30-60 min observed).
+  single full pass over the original 45-query set (now 100) already cost real wall-clock time (30-60 min observed).
   Repeating it 30x isn't practical on the free tier. If a paid key removes that constraint, the
   runner would need a `--reps` flag and the analysis would aggregate per-query before pairing, not
   just concatenate — not built, since it wasn't needed to produce a first real result.

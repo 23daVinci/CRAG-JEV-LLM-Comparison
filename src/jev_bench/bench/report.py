@@ -93,9 +93,9 @@ def _relevance_curve_section(a_results: list[QueryResult], b_results: list[Query
 
     return (
         "### Passage-relevance operating points (screen_passage, per document)\n\n"
-        f"- Gemini (hard decision): precision={gemini_point.precision:.3f} "
+        f"- Variant A (hard decision): precision={gemini_point.precision:.3f} "
         f"recall={gemini_point.recall:.3f}\n"
-        f"- Jev iso-recall precision (at Gemini's recall {gemini_point.recall:.3f}): "
+        f"- Jev iso-recall precision (at variant A's recall {gemini_point.recall:.3f}): "
         f"{jev_iso_recall:.3f}\n"
         f"- Jev operating points swept: {len(jev_points)} (full curve available via "
         "`sweep_thresholds` for plotting)\n"
