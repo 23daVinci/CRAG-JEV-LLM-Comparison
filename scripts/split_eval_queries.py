@@ -1,4 +1,4 @@
-"""Deterministic train/val/test split of eval/dataset.jsonl's 45 queries, stratified by `type`
+"""Deterministic train/val/test split of eval/dataset.jsonl's 100 queries, stratified by `type`
 (bridge/comparison) so each split keeps roughly the full set's bridge:comparison ratio.
 
 Built for the Jev threshold-tuning phase (branch `tune-jev-thresholds`, see the plan and
@@ -7,9 +7,9 @@ it without re-sweeping, test is scored exactly once after tuning is locked. `eva
 .jsonl` records are assigned to a split by looking up their `query_id` here — never an independent
 random assignment — so both members of a clean/injected pair always land in the same split.
 
-With only 45 queries total, test ending up at 9 queries means one flipped query moves test F1 by
-about 11 points. State that plainly wherever test-split numbers are reported — a bootstrap CI over
-queries is required, a bare point estimate is not defensible at this n.
+At 100 queries, an 80/10/10 split still leaves val/test thin (10 queries each) — a bootstrap CI
+over queries is still required wherever test-split numbers are reported, a bare point estimate is
+not defensible at this n, even though it's roomier than the original 45-query/60-20-20 split.
 
 Usage:
     uv run python scripts/split_eval_queries.py
@@ -26,11 +26,11 @@ from pathlib import Path
 
 SEED = 20260915  # same documented seed as curate_eval_set.py / generate_injection_probes.py
 
-# Per-stratum counts chosen to land on an overall 60/20/20 split (27/9/9 of 45) while keeping each
-# stratum's own train:val:test ratio close to 60:20:20. n=45 is small enough that explicit counts
-# are simpler to audit than a generic rounding rule that happens to land in the same place.
-BRIDGE_COUNTS = {"train": 19, "val": 7, "test": 6}  # bridge n=32
-COMPARISON_COUNTS = {"train": 8, "val": 2, "test": 3}  # comparison n=13
+# Per-stratum counts chosen to land on an overall 80/10/10 split (80/10/10 of 100) while keeping
+# each stratum's own train:val:test ratio close to 80:10:10. Explicit counts are simpler to audit
+# than a generic rounding rule that happens to land in the same place.
+BRIDGE_COUNTS = {"train": 57, "val": 7, "test": 7}  # bridge n=71
+COMPARISON_COUNTS = {"train": 23, "val": 3, "test": 3}  # comparison n=29
 
 REPO_ROOT = Path(__file__).parent.parent
 DATASET_PATH = REPO_ROOT / "eval" / "dataset.jsonl"
@@ -65,9 +65,9 @@ def main() -> None:
     bridge = [r for r in records if r["type"] == "bridge"]
     comparison = [r for r in records if r["type"] == "comparison"]
 
-    if len(bridge) != 32 or len(comparison) != 13:
+    if len(bridge) != 71 or len(comparison) != 29:
         raise ValueError(
-            f"expected 32 bridge + 13 comparison records, found {len(bridge)} + {len(comparison)} "
+            f"expected 71 bridge + 29 comparison records, found {len(bridge)} + {len(comparison)} "
             "— BRIDGE_COUNTS/COMPARISON_COUNTS need updating if eval/dataset.jsonl changed"
         )
 
