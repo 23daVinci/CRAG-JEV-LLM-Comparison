@@ -53,7 +53,7 @@ def test_pick_best_f1_threshold_picks_the_perfectly_separating_point() -> None:
     assert best.recall == 1.0
 
 
-def test_pick_best_f1_threshold_breaks_ties_with_the_higher_threshold() -> None:
+def test_pick_best_f1_threshold_picks_the_upper_middle_of_an_even_tie() -> None:
     # f1 is symmetric in (precision, recall), so swapping the two values yields identical f1 at a
     # different threshold — a genuine tie that must resolve to the higher, more conservative one.
     points = [
@@ -92,3 +92,19 @@ def test_bootstrap_mean_ci_on_constant_values_is_a_point() -> None:
 
 def test_bootstrap_mean_ci_on_empty_values_is_zero() -> None:
     assert bootstrap_mean_ci([]) == (0.0, 0.0)
+
+
+def test_pick_best_f1_threshold_picks_the_middle_of_a_plateau() -> None:
+    points = [
+        ThresholdPoint(threshold=t, precision=1.0, recall=1.0) for t in (0.2, 0.4, 0.6, 0.8)
+    ] + [ThresholdPoint(threshold=0.9, precision=1.0, recall=0.5)]
+    assert pick_best_f1_threshold(points).threshold == 0.6
+
+
+def test_pick_best_f1_threshold_uses_the_longest_contiguous_tied_run() -> None:
+    perfect = {0.1, 0.5, 0.6, 0.7}
+    points = [
+        ThresholdPoint(threshold=t, precision=1.0, recall=1.0 if t in perfect else 0.5)
+        for t in (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7)
+    ]
+    assert pick_best_f1_threshold(points).threshold == 0.6

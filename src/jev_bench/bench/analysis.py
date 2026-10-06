@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import statistics
 from dataclasses import dataclass
 
@@ -110,6 +111,24 @@ def metrics_at_threshold(
     return SelectionMetrics(precision=precision, recall=recall, f1=f1)
 
 
+def sweep_fixed_thresholds(
+    probabilities: list[float], labels: list[bool], candidates: list[float]
+) -> list[ThresholdPoint]:
+    """Precision/recall at each of a fixed, caller-supplied candidate list — unlike
+    `sweep_thresholds`, whose candidates are whatever probabilities happened to be observed. A fixed
+    grid makes tuning reproducible despite live-API jitter in the raw probabilities (a data-driven
+    sweep picked 0.360 then 0.370 on two consecutive runs) and keeps one noisy document from
+    creating its own "best" candidate."""
+
+    points: list[ThresholdPoint] = []
+    for threshold in candidates:
+        metrics = metrics_at_threshold(probabilities, labels, threshold)
+        points.append(
+            ThresholdPoint(threshold=threshold, precision=metrics.precision, recall=metrics.recall)
+        )
+    return points
+
+
 def threshold_point_f1(point: ThresholdPoint) -> float:
     if point.precision + point.recall == 0:
         return 0.0
@@ -120,13 +139,29 @@ def pick_best_f1_threshold(points: list[ThresholdPoint]) -> ThresholdPoint:
     """The threshold-tuning selection rule: maximize Jev's own F1 on train, independent of any other
     backend's operating point. (Iso-recall, by contrast, lets a *comparison* target's recall decide
     where on the curve to look — appropriate for reporting, wrong for picking Jev's own threshold.)
-    Ties broken by higher threshold (the more conservative choice, fewer false positives) to keep
-    selection deterministic."""
+
+    When several adjacent thresholds tie for the best F1 (a plateau — e.g. injection detection,
+    where nearly every threshold scores a perfect 1.00), pick the middle of the longest tied run
+    rather than either edge: an edge pick sits right next to the cliff where F1 starts to fall, so
+    it is the least robust point on the plateau. With an even-length run, the upper-middle point
+    is used so selection stays deterministic."""
 
     if not points:
         raise ValueError("cannot pick a threshold from an empty sweep")
 
-    return max(points, key=lambda p: (threshold_point_f1(p), p.threshold))
+    ordered = sorted(points, key=lambda p: p.threshold)
+    best_f1 = max(threshold_point_f1(p) for p in ordered)
+    runs: list[list[ThresholdPoint]] = []
+    previous_tied = False
+    for point in ordered:
+        tied = math.isclose(threshold_point_f1(point), best_f1, abs_tol=1e-9)
+        if tied and previous_tied:
+            runs[-1].append(point)
+        elif tied:
+            runs.append([point])
+        previous_tied = tied
+    longest = max(runs, key=len)
+    return longest[len(longest) // 2]
 
 
 def bootstrap_mean_ci(
@@ -224,4 +259,42 @@ def paired_latency_comparison(
         wilcoxon_statistic=wilcoxon_statistic,
         wilcoxon_pvalue=wilcoxon_pvalue,
         hodges_lehmann_ms=_hodges_lehmann(deltas),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class PairedQualityComparison:
+    """Per-query F1 difference (A minus B) over the same queries. Both variants ran the identical
+    fixture per query, so pairing removes per-query difficulty as a confound — much more powerful
+    than eyeballing whether two separately-computed CIs overlap. A claim that B "outperforms" A on
+    quality needs this CI to sit entirely on B's side of zero."""
+
+    mean_delta: float
+    ci95_low: float
+    ci95_high: float
+    wilcoxon_pvalue: float
+    a_better: int
+    b_better: int
+    tied: int
+
+
+def paired_f1_comparison(
+    a_f1: list[float], b_f1: list[float], n_bootstrap: int = 10_000, seed: int = 0
+) -> PairedQualityComparison:
+    if len(a_f1) != len(b_f1):
+        raise ValueError("paired comparison requires equal-length, query-aligned samples")
+    deltas = np.asarray(a_f1) - np.asarray(b_f1)
+    ci_low, ci_high = bootstrap_mean_ci([float(d) for d in deltas], n_bootstrap, seed)
+    if np.all(deltas == 0):
+        pvalue = 1.0
+    else:
+        pvalue = float(scipy_stats.wilcoxon(deltas, zero_method="wilcox").pvalue)
+    return PairedQualityComparison(
+        mean_delta=float(np.mean(deltas)) if len(deltas) else 0.0,
+        ci95_low=ci_low,
+        ci95_high=ci_high,
+        wilcoxon_pvalue=pvalue,
+        a_better=int(np.sum(deltas > 0)),
+        b_better=int(np.sum(deltas < 0)),
+        tied=int(np.sum(deltas == 0)),
     )

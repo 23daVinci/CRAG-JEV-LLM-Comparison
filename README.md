@@ -43,7 +43,7 @@ uv sync --all-extras
 cp .env.example .env   # fill in GROQ_API_KEY and TYPESAFE_API_KEY (GOOGLE_API_KEY optional)
 
 uv run jev-bench bench --dry-run        # two ScriptedDeciders, no API keys, no network
-uv run jev-bench bench --limit 5        # live run, first 5 of 45 eval questions
+uv run jev-bench bench --limit 5        # live run, first 5 of 100 eval questions
 uv run jev-bench injection-eval --dry-run   # scores the injection-screening guard
 uv run jev-bench serve                  # FastAPI+SSE live demo UI at localhost:8000
 ```
@@ -55,24 +55,29 @@ changed twice during development (short version: free-tier quotas and CPU-bound 
 ## Example result
 
 A real (not simulated) run against live Groq and Jev APIs, on the **held-out test split**
-(`eval/splits.json` — 9 of 45 eval queries never seen during threshold tuning). Jev's thresholds
-were tuned on a separate 27-query train split and confirmed on a 9-query val split beforehand; see
-`docs/METHODOLOGY.md`'s "Threshold tuning" section for the full process and the exact picked values:
+(`eval/splits.json` — 10 of 100 eval queries never seen during threshold tuning). Jev's thresholds
+were tuned on a separate 80-query train split and confirmed on a 10-query val split beforehand; see
+`docs/METHODOLOGY.md`'s "Threshold tuning" section for the full process and the exact picked values
+(relevance 0.40, injection 0.50). Document ranking is semantic (local embeddings), shared by both
+variants:
 
 | | LLM (Groq, qwen3.8-27b) | Jev |
 |---|---|---|
-| Selection quality vs. gold (F1, 95% bootstrap CI) | **0.830** [0.719, 0.926] | 0.667 [0.463, 0.852] |
+| Selection quality vs. gold (F1, 95% bootstrap CI) | **0.677** [0.534, 0.817] | 0.533 [0.380, 0.670] |
 | Injection-guard precision/recall | 1.00 / 1.00 | 1.00 / 1.00 |
-| Latency (median) | 29.2s | **1.3s** (~22x faster) |
-| Cost per 1,000 queries | $5.52 | **$0.26** (~21x cheaper) |
+| Latency (median) | 26.2s | **3.5s** (~7.5x faster) |
+| Cost per 1,000 queries | $6.87 | **$0.24** (~28x cheaper) |
 
-Both F1 figures carry a 95% bootstrap CI over queries — at n=9, one flipped query moves F1 by about
-11 points, so read these as imprecisely-measured, not single-decimal-precision. Latency difference
-is statistically significant (Wilcoxon p=0.0078). The quality gap (16.3 F1 points) is narrower than
-an earlier untuned run's 29-point gap, but still exceeds this project's own pre-registered
-kill-switch threshold (3 points) — the honest headline is **"dramatically faster and cheaper, but a
-real accuracy cost,"** not an unqualified win. See `docs/METHODOLOGY.md` for the full tuning
-methodology, the iso-recall comparison, and caveats on this result's precision at this split size.
+Speed and cost are clear: the latency difference is statistically significant (paired Wilcoxon
+p=0.0020). Quality is not settled. The paired per-query F1 difference (Groq minus Jev) is +0.144
+with a 95% CI of [-0.020, +0.327] (p=0.22; Groq scored higher on 5 queries, Jev on 1, 4 tied). The
+point estimate is well past this project's pre-registered 3-point kill switch, but the interval
+includes zero, so at n=10 the accuracy cost is likely, not established — and a single query moves
+the mean F1 by 0.10. The honest headline is **"much faster and cheaper, with a likely accuracy cost
+that this sample size can't confirm,"** not an unqualified win in either direction. Jev's weakness
+here is recall (0.55 vs. 0.85). A first attempt at this run completed only 8 of 10 queries (network
+errors) and was discarded; the numbers above are the complete second run, recorded per query in
+MLflow (`jev-bench bench --track`). See `docs/METHODOLOGY.md` for the tuning methodology and caveats.
 
 A static, shareable version of this result lives at [`web/results.html`](web/results.html) — open
 it directly in a browser (no server, no API keys, no network calls) for a presentation-ready summary

@@ -18,10 +18,10 @@ def test_tune_target_picks_train_threshold_and_confirms_on_val_without_resweepin
 
     outcome = tune_target(train_probabilities, train_labels, val_probabilities, val_labels)
 
-    # Same sweep as test_threshold_sweep.py's pick_best_f1_threshold case: 0.4 maximizes train F1.
-    assert outcome.train_threshold.threshold == 0.4
+    # Every grid point 0.15..0.40 ties for the best train F1 (0.8); the plateau midpoint is 0.30.
+    assert outcome.train_threshold.threshold == 0.3
     assert outcome.train_f1 == pytest.approx(0.8)
-    # VAL confirmation reuses that exact threshold (0.4): both 0.95 and 0.5 clear it, but only
+    # VAL confirmation reuses that exact threshold (0.3): both 0.95 and 0.5 clear it, but only
     # 0.95 is a true positive, so precision drops to 0.5 while recall stays at 1.0.
     assert outcome.val_metrics.precision == pytest.approx(0.5)
     assert outcome.val_metrics.recall == 1.0
@@ -78,7 +78,8 @@ async def test_tune_relevance_threshold_never_touches_the_test_split() -> None:
 
     outcome = await tune_relevance_threshold(decider, records=records, splits=splits)
 
-    assert outcome.train_threshold.threshold == 0.9
+    # Perfect separation holds from 0.15 to 0.90; the plateau midpoint is 0.55.
+    assert outcome.train_threshold.threshold == 0.55
     assert outcome.val_metrics.f1 == pytest.approx(1.0)
 
 
@@ -130,7 +131,7 @@ async def test_tune_injection_threshold_never_touches_the_test_split() -> None:
 
     outcome = await tune_injection_threshold(decider, probes=probes, splits=splits)
 
-    assert outcome.train_threshold.threshold == 0.9
+    assert outcome.train_threshold.threshold == 0.55
     assert outcome.val_metrics.f1 == pytest.approx(1.0)
 
 
@@ -144,3 +145,32 @@ def test_filter_probes_by_split_keeps_only_matching_query_ids() -> None:
     probes = [{"id": "p1", "query_id": "q1"}, {"id": "p2", "query_id": "q2"}]
     splits = {"q1": "train", "q2": "test"}
     assert [p["id"] for p in filter_probes_by_split(probes, splits, "test")] == ["p2"]
+
+
+def test_candidate_grid_is_fixed_and_covers_both_regimes() -> None:
+    from jev_bench.bench.tuning import CANDIDATE_THRESHOLDS
+
+    assert CANDIDATE_THRESHOLDS[:3] == [0.05, 0.1, 0.15]
+    assert 0.95 in CANDIDATE_THRESHOLDS and 0.98 in CANDIDATE_THRESHOLDS
+    assert sorted(CANDIDATE_THRESHOLDS) == CANDIDATE_THRESHOLDS
+    assert len(CANDIDATE_THRESHOLDS) == len(set(CANDIDATE_THRESHOLDS))
+
+
+def test_sweep_fixed_thresholds_scores_only_the_given_candidates() -> None:
+    from jev_bench.bench.analysis import sweep_fixed_thresholds
+
+    points = sweep_fixed_thresholds([0.9, 0.7, 0.4, 0.1], [True, False, True, False], [0.4, 0.8])
+    assert [p.threshold for p in points] == [0.4, 0.8]
+    assert points[0].recall == 1.0
+    assert points[0].precision == pytest.approx(2 / 3)
+    assert points[1].recall == pytest.approx(0.5)
+    assert points[1].precision == 1.0
+
+
+def test_tune_target_is_stable_under_small_probability_jitter() -> None:
+    labels = [True, True, True, False, False, False]
+    base = [0.91, 0.84, 0.77, 0.21, 0.15, 0.08]
+    jittered = [p + 0.004 for p in base]
+    a = tune_target(base, labels, base, labels)
+    b = tune_target(jittered, labels, jittered, labels)
+    assert a.train_threshold.threshold == b.train_threshold.threshold

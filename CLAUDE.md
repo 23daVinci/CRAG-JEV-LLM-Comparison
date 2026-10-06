@@ -62,12 +62,18 @@ enforced, not just a convention — `tests/test_topology.py` AST-scans those thr
 topology. If a change needs to special-case a backend inside graph code, that's a sign the abstraction
 belongs in `Decider` instead.
 
-**The graph** (`graph/builder.py`, `graph/nodes.py`, `graph/state.py`): `retrieve` (TF-IDF rank +
-batch, `retrieval/store.py`) → `screen` (fan-out `screen_passage` over the batch, async) →
+**The graph** (`graph/builder.py`, `graph/nodes.py`, `graph/state.py`): `retrieve` (semantic rank via
+`OllamaEmbeddingRetriever` + batch, `retrieval/store.py`) → `screen` (fan-out `screen_passage` over
+the batch, async) →
 `sufficiency` (`grade_sufficiency` over selected docs so far) → `decide_retry` → loops back to
 `retrieve` or ends, capped by `GraphConfig.max_attempts`. State is a `TypedDict`
 (`RetrievalState`) threaded through every node; `trace: Annotated[list[NodeSpan], operator.add]`
-accumulates telemetry spans via LangGraph's reducer.
+accumulates telemetry spans via LangGraph's reducer. `build_graph(decider, retriever, cfg)` takes
+both `decider` and `retriever` as required, explicit arguments — no implicit default for either —
+so both variants in a comparison always read the identical ranking. Live runs use
+`OllamaEmbeddingRetriever` (needs a local Ollama server with `nomic-embed-text` pulled); tests and
+`--dry-run` use `retrieval/fake.py::ScriptedRetriever` (deterministic, no server needed), the same
+pattern `deciders/fake.py::ScriptedDecider` already uses for deciders.
 
 **`Decider` protocol** (`deciders/base.py`): three typed semantic questions —
 `screen_passage`, `grade_sufficiency`, `decide_retry` — deliberately not a generic `judge(prompt)`,

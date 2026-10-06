@@ -2,6 +2,7 @@ import pytest
 
 from jev_bench.bench.runner import run_comparison
 from jev_bench.deciders.fake import ScriptedDecider
+from jev_bench.retrieval.fake import ScriptedRetriever
 
 RECORD = {
     "id": "q1",
@@ -14,7 +15,7 @@ RECORD = {
 @pytest.mark.asyncio
 async def test_normal_run_does_not_trip_the_fixture_integrity_check() -> None:
     results, failures = await run_comparison(
-        ScriptedDecider(name="a"), ScriptedDecider(name="b"), records=[RECORD]
+        ScriptedDecider(name="a"), ScriptedDecider(name="b"), ScriptedRetriever(), records=[RECORD]
     )
     assert len(results) == 1
     assert failures == []
@@ -33,7 +34,7 @@ async def test_mutating_the_shared_fixture_trips_the_integrity_check() -> None:
     # 45-query run (this exact bug cost a full real run's worth of API spend before this test
     # existed, see docs/METHODOLOGY.md).
     results, failures = await run_comparison(
-        MutatingDecider(name="a"), ScriptedDecider(name="b"), records=[record]
+        MutatingDecider(name="a"), ScriptedDecider(name="b"), ScriptedRetriever(), records=[record]
     )
     assert results == []
     assert len(failures) == 1
@@ -61,6 +62,7 @@ async def test_one_failing_query_does_not_prevent_others_from_completing() -> No
     results, failures = await run_comparison(
         MutatingDecider(name="a"),
         ScriptedDecider(name="b"),
+        ScriptedRetriever(),
         records=[good_record_1, bad_record, good_record_2],
     )
     assert {r.query_id for r in results} == {"q1", "q3"}

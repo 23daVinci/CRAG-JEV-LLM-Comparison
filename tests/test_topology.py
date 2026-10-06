@@ -11,6 +11,7 @@ from pathlib import Path
 
 from jev_bench.deciders.fake import ScriptedDecider
 from jev_bench.graph.builder import build_graph
+from jev_bench.retrieval.fake import ScriptedRetriever
 
 GRAPH_SRC_FILES = [
     Path(__file__).parent.parent / "src" / "jev_bench" / "graph" / "builder.py",
@@ -20,7 +21,7 @@ GRAPH_SRC_FILES = [
 
 
 def _topology(decider_name: str) -> tuple[frozenset[str], frozenset[tuple[str, str, object]]]:
-    app = build_graph(ScriptedDecider(name=decider_name))
+    app = build_graph(ScriptedDecider(name=decider_name), ScriptedRetriever())
     g = app.get_graph()
     nodes = frozenset(g.nodes.keys())
     edges = frozenset((e.source, e.target, e.data) for e in g.edges)

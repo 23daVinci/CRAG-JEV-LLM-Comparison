@@ -8,8 +8,8 @@
 # without re-sweeping. Ground truth: `relevance` from HotpotQA's gold `supporting_facts`
 # (eval/dataset.jsonl); `injection` from the constructed clean/injected pairs
 # (eval/injection_probes.jsonl).
-relevance: 0.37
-injection: 0.98
+relevance: 0.4
+injection: 0.5
 
 # NOT TUNED — left at the vendor's cookbook defaults (docs.typesafe.ai/cookbooks/
 # classifying_rag_passages). No ground truth exists in this project's eval data for "contains

@@ -25,6 +25,11 @@ class OllamaSettings(BaseSettings):
 
     model: str = "llama3.2:3b"
     base_url: str | None = None
+    embedding_model: str = "nomic-embed-text"
+    """Used by `OllamaEmbeddingRetriever` for semantic document ranking — a separate, much smaller
+    purpose-built embedding model (~274MB) rather than reusing `model` (a full chat model), which
+    would be both slower per call and a weaker embedder. Requires `ollama pull nomic-embed-text`
+    once; not pulled automatically."""
 
 
 class GroqSettings(BaseSettings):

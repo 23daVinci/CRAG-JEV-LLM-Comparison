@@ -14,7 +14,8 @@ class RetrievalState(TypedDict):
     context). Identical for both variants — retrieval is never a variable under test."""
 
     ranked_ids: list[str]
-    """Output of the one-time TF-IDF rank; empty until the first `retrieve` node runs."""
+    """Output of the one-time semantic (embedding cosine similarity) rank; empty until the first
+    `retrieve` node runs."""
 
     screened_ids: list[str]
     """Ids already passed through `screen_passage`, across all attempts — never re-screened."""
