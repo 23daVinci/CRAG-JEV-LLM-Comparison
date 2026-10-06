@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark light">
-  <title>jev-bench results: Jev on 1,000 held-out queries, and a 19-query head-to-head with Groq (LLM)</title>
+  <title>jev-bench: latency and cost saved by swapping LLM decision nodes for Jev in a CRAG-style workflow</title>
   <!-- Static, self-contained results page. No scripts, no network requests, no backend.
        Open directly via file://. Append #light or #dark to the URL to force a theme. -->
   <link rel="stylesheet" href="results.css">
@@ -20,23 +20,41 @@
       <div class="eyebrow">
         <span class="brand">jev-bench</span>
         <span class="sep" aria-hidden="true"></span>
-        <span>A/B benchmark of an agentic retrieval workflow</span>
+        <span>Minimal-infrastructure A/B benchmark of a CRAG-style retrieval workflow</span>
         <span class="sep" aria-hidden="true"></span>
         <span>Held-out test set, n = 1,000 (head-to-head n = 19)</span>
       </div>
 
-      <h1>0.72 F1 on 1,000 unseen questions, at $0.23 per 1,000 queries. <span class="h1-muted">Against an LLM: ~12&times; faster, ~25&times; cheaper, and the LLM's small accuracy edge is unproven at n = 19.</span></h1>
+      <h1>How much does swapping LLM decision nodes for Jev save? <span class="h1-muted">In a CRAG-style workflow: far less latency and cost, with minimal tuning and good accuracy.</span></h1>
 
       <p class="lede">
-        One LangGraph workflow, two decision backends. The classification-style calls
-        (is this passage relevant, is the evidence sufficient, should it retry) are answered
-        either by an LLM (Groq) or by Jev, TypeSafe AI's model that returns typed probabilities
-        instead of generated text. Jev ran on all 1,000 test questions; Groq's free tier allows
-        only about 30 queries a day, so the side-by-side comparison covers just 19 of them.
+        One LangGraph workflow; its classification-style calls (is this passage relevant, is the
+        evidence sufficient, should it retry) go to an LLM or to Jev, TypeSafe AI's model that returns
+        typed probabilities instead of generated text. Jev ran all 1,000 test questions; Groq's free
+        tier (about 30 queries a day) capped the head-to-head at 19.
       </p>
 
+      <!-- ===== Setup strip: the conditions every number below was measured under ===== -->
+      <section class="setup" aria-label="Experimental setup">
+        <div class="setup-item">
+          <div class="setup-kicker">Hard multi-hop benchmark</div>
+          <div class="setup-key">2 of 10 paragraphs, both required</div>
+          <p>HotpotQA distractor, dev set: every question rated &ldquo;hard&rdquo;. Bridge questions (~71%) reach the second gold paragraph only via an entity named in the first; the rest (~29%) are comparisons. Scored against gold supporting facts, no LLM judge.</p>
+        </div>
+        <div class="setup-item">
+          <div class="setup-kicker">Minimal infrastructure</div>
+          <div class="setup-key">CPU-only machine, no GPU</div>
+          <p>Retrieval ranks the 10 paragraphs with <code>nomic-embed-text</code> (137M parameters, 274&nbsp;MB) via Ollama on CPU. No vector database, no fine-tuning, no reranker. Jev and the LLM are called as hosted APIs.</p>
+        </div>
+        <div class="setup-item">
+          <div class="setup-kicker">Minimal tuning</div>
+          <div class="setup-key">2 thresholds tuned, 3 at defaults</div>
+          <p>Relevance 0.40 and injection 0.50, set on 80 train + 10 validation questions. Evidence, contradiction and sufficiency stay at the vendor's defaults. Nothing re-tuned for the 1,000 test questions; no fine-tuning, and both backends get identical prompt wording.</p>
+        </div>
+      </section>
+
       <ul class="legend" aria-label="Variants">
-        <li><span class="swatch swatch-llm" aria-hidden="true"></span><strong>Groq</strong><span class="legend-sub">LLM decider, qwen/qwen3.8-27b</span></li>
+        <li><span class="swatch swatch-llm" aria-hidden="true"></span><strong><span class="model">qwen3.8-27b</span></strong><span class="legend-sub">LLM decider, hosted on Groq</span></li>
         <li><span class="swatch swatch-jev" aria-hidden="true"></span><strong>Jev</strong><span class="legend-sub">TypeSafe AI, probability-based decider</span></li>
       </ul>
     </header>
@@ -47,10 +65,15 @@
       <article class="card kpi">
         <div class="kpi-label">Median latency per query</div>
         <div class="kpi-value">~12<span class="kpi-x">&times;</span><span class="kpi-unit">faster</span></div>
-        <div class="kpi-caption">Jev 2.5s vs. Groq 29.4s, same 19 queries</div>
-        <div class="minibars" role="img" aria-label="Median latency on the 19-query head-to-head: Groq 29.4 seconds, Jev 2.5 seconds">
-          <div class="mb-row" title="Groq (LLM decider): 29.4s median, n = 19">
-            <span class="mb-name">Groq</span>
+        <div class="kpi-caption">Jev 2.5s vs. <span class="model">qwen3.8-27b</span> 29.4s, same 19 queries</div>
+        <div class="pr" title="Jev alone on all 1,000 test queries: median latency 3.5s per query">
+          <div class="pr-item"><span class="pr-name">Median latency</span><span class="pr-val">3.5s</span></div>
+          <div class="pr-scope">Jev, all 1,000 queries</div>
+        </div>
+        <div class="minibars" role="img" aria-label="Median latency on the 19-query head-to-head: qwen3.8-27b 29.4 seconds, Jev 2.5 seconds">
+          <div class="mb-head">Head-to-head, same 19 queries</div>
+          <div class="mb-row" title="qwen3.8-27b (LLM decider): 29.4s median, n = 19">
+            <span class="mb-name"><span class="model">qwen3.8-27b</span></span>
             <span class="mb-track"><span class="mb-fill fill-llm" style="width:100%"></span></span>
             <span class="mb-val">29.4s</span>
           </div>
@@ -60,16 +83,21 @@
             <span class="mb-val">2.5s</span>
           </div>
         </div>
-        <div class="kpi-foot">Paired Wilcoxon signed-rank, p &lt; 0.0001. Jev's median on all 1,000: 3.5s.</div>
+        <div class="kpi-foot">Paired Wilcoxon signed-rank, p&nbsp;&lt;&nbsp;0.0001.</div>
       </article>
 
       <article class="card kpi">
         <div class="kpi-label">Cost per 1,000 queries</div>
         <div class="kpi-value">~25<span class="kpi-x">&times;</span><span class="kpi-unit">cheaper</span></div>
-        <div class="kpi-caption">Jev $0.21 vs. Groq $5.18, same 19 queries</div>
-        <div class="minibars" role="img" aria-label="Cost per 1,000 queries on the 19-query head-to-head: Groq $5.18, Jev $0.21">
-          <div class="mb-row" title="Groq (LLM decider): $5.18 per 1,000 queries">
-            <span class="mb-name">Groq</span>
+        <div class="kpi-caption">Jev $0.21 vs. <span class="model">qwen3.8-27b</span> $5.18, same 19 queries</div>
+        <div class="pr" title="Jev alone on all 1,000 test queries: $0.226 total">
+          <div class="pr-item"><span class="pr-name">Total cost</span><span class="pr-val">$0.226</span></div>
+          <div class="pr-scope">Jev, all 1,000 queries</div>
+        </div>
+        <div class="minibars" role="img" aria-label="Cost per 1,000 queries on the 19-query head-to-head: qwen3.8-27b $5.18, Jev $0.21">
+          <div class="mb-head">Head-to-head, same 19 queries</div>
+          <div class="mb-row" title="qwen3.8-27b (LLM decider): $5.18 per 1,000 queries">
+            <span class="mb-name"><span class="model">qwen3.8-27b</span></span>
             <span class="mb-track"><span class="mb-fill fill-llm" style="width:100%"></span></span>
             <span class="mb-val">$5.18</span>
           </div>
@@ -79,17 +107,22 @@
             <span class="mb-val">$0.21</span>
           </div>
         </div>
-        <div class="kpi-foot">Jev on all 1,000: $0.226 total. Priced from dated rows in <code>config/pricing.yaml</code>.</div>
+        <div class="kpi-foot">Priced from dated rows in <code>config/pricing.yaml</code>.</div>
       </article>
 
       <article class="card kpi">
         <div class="kpi-label">Selection quality vs. gold (F1), Jev</div>
         <div class="kpi-value">0.72<span class="kpi-unit">F1</span></div>
         <div class="kpi-caption">1,000 unseen queries, 95% CI [0.703, 0.735]</div>
-        <div class="minibars" role="img" aria-label="Head-to-head mean selected-set F1 on 19 queries: Groq 0.686, Jev 0.640, on a 0 to 1 scale">
+        <div class="pr" title="Jev, all 1,000 test queries: mean per-query precision 0.776, mean per-query recall 0.747. Precision slightly above recall: Jev misses a few more relevant documents than it wrongly includes.">
+          <div class="pr-item"><span class="pr-name">Precision</span><span class="pr-val">0.776</span></div>
+          <div class="pr-item"><span class="pr-name">Recall</span><span class="pr-val">0.747</span></div>
+          <div class="pr-scope">Jev, all 1,000 queries<br>mean per query</div>
+        </div>
+        <div class="minibars" role="img" aria-label="Head-to-head mean selected-set F1 on 19 queries: qwen3.8-27b 0.686, Jev 0.640, on a 0 to 1 scale">
           <div class="mb-head">Head-to-head, same 19 queries</div>
-          <div class="mb-row" title="Groq (LLM decider) on the 19-query head-to-head: F1 0.686, 95% CI [0.559, 0.809]">
-            <span class="mb-name">Groq</span>
+          <div class="mb-row" title="qwen3.8-27b (LLM decider) on the 19-query head-to-head: F1 0.686, 95% CI [0.559, 0.809]">
+            <span class="mb-name"><span class="model">qwen3.8-27b</span></span>
             <span class="mb-track"><span class="mb-fill fill-llm" style="width:68.6%"></span></span>
             <span class="mb-val">0.686</span>
           </div>
@@ -101,7 +134,7 @@
         </div>
         <div class="gap-note">
           <svg class="status-icon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 1.5 15 14H1L8 1.5Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M8 6v3.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="8" cy="11.7" r=".95" fill="currentColor"/></svg>
-          <span><strong>Head-to-head (n = 19): Groq ahead by 4.6 pts.</strong> Paired CI [&minus;2.9, +12.7] includes zero. The point estimate is past the 3-pt kill switch, the CI is not: inconclusive.</span>
+          <span><strong>Head-to-head (n = 19): <span class="model">qwen3.8-27b</span> ahead&nbsp;by&nbsp;4.6&nbsp;pts.</strong> Paired CI [&minus;2.9,&nbsp;+12.7] includes zero. The point estimate is past the 3-pt kill switch, the CI is not: inconclusive.</span>
         </div>
       </article>
     </section>
@@ -116,27 +149,27 @@
         </header>
 
         <svg class="ci-chart" viewBox="0 0 640 316" width="640" height="316" role="img"
-             aria-label="Dot plot with 95% confidence intervals on a shared F1 axis from 0.50 to 0.85. Jev on all 1,000 test queries: F1 0.719, CI 0.703 to 0.735. Groq on 19 queries: F1 0.686, CI 0.559 to 0.809. Jev on the same 19 queries: F1 0.640, CI 0.541 to 0.729. Kill-switch line at 0.656, Groq minus 3 points, drawn across the head-to-head rows only.">
-          <!-- x(v) = 112 + (v - 0.50) / 0.35 * 516; computed by script, not by eye -->
+             aria-label="Dot plot with 95% confidence intervals on a shared F1 axis from 0.50 to 0.85. Jev on all 1,000 test queries: F1 0.719, CI 0.703 to 0.735. qwen3.8-27b on 19 queries: F1 0.686, CI 0.559 to 0.809. Jev on the same 19 queries: F1 0.640, CI 0.541 to 0.729. Kill-switch line at 0.656, qwen3.8-27b minus 3 points, drawn across the head-to-head rows only.">
+          <!-- x(v) = 128 + (v - 0.50) / 0.35 * 500; computed by script, not by eye -->
           <g class="grid">
-            <line x1="112" x2="112" y1="24" y2="262"/>
-            <line x1="185.7" x2="185.7" y1="24" y2="262"/>
-            <line x1="259.4" x2="259.4" y1="24" y2="262"/>
-            <line x1="333.1" x2="333.1" y1="24" y2="262"/>
-            <line x1="406.9" x2="406.9" y1="24" y2="262"/>
-            <line x1="480.6" x2="480.6" y1="24" y2="262"/>
-            <line x1="554.3" x2="554.3" y1="24" y2="262"/>
+            <line x1="128" x2="128" y1="24" y2="262"/>
+            <line x1="199.4" x2="199.4" y1="24" y2="262"/>
+            <line x1="270.9" x2="270.9" y1="24" y2="262"/>
+            <line x1="342.3" x2="342.3" y1="24" y2="262"/>
+            <line x1="413.7" x2="413.7" y1="24" y2="262"/>
+            <line x1="485.1" x2="485.1" y1="24" y2="262"/>
+            <line x1="556.6" x2="556.6" y1="24" y2="262"/>
             <line x1="628" x2="628" y1="24" y2="262"/>
           </g>
-          <line class="axis" x1="112" x2="628" y1="262" y2="262"/>
+          <line class="axis" x1="128" x2="628" y1="262" y2="262"/>
           <g class="tick-labels">
-            <text x="112" y="282">0.50</text>
-            <text x="185.7" y="282">0.55</text>
-            <text x="259.4" y="282">0.60</text>
-            <text x="333.1" y="282">0.65</text>
-            <text x="406.9" y="282">0.70</text>
-            <text x="480.6" y="282">0.75</text>
-            <text x="554.3" y="282">0.80</text>
+            <text x="128" y="282">0.50</text>
+            <text x="199.4" y="282">0.55</text>
+            <text x="270.9" y="282">0.60</text>
+            <text x="342.3" y="282">0.65</text>
+            <text x="413.7" y="282">0.70</text>
+            <text x="485.1" y="282">0.75</text>
+            <text x="556.6" y="282">0.80</text>
             <text x="628" y="282">0.85</text>
           </g>
           <text class="axis-title" x="628" y="306">Selected-set F1 &rarr;</text>
@@ -146,32 +179,32 @@
             <title>Jev, all 1,000 test queries: F1 0.719, 95% CI [0.703, 0.735]</title>
             <text class="row-label" x="0" y="55">Jev</text>
             <text class="row-sub" x="0" y="71">all 1,000</text>
-            <line class="whisker stroke-jev" x1="411.3" x2="458.5" y1="56" y2="56"/>
-            <line class="cap stroke-jev" x1="411.3" x2="411.3" y1="48" y2="64"/>
-            <line class="cap stroke-jev" x1="458.5" x2="458.5" y1="48" y2="64"/>
-            <circle class="dot fill-jev" cx="434.9" cy="56" r="7.5"/>
-            <text class="val-label" x="434.9" y="38">0.719</text>
+            <line class="whisker stroke-jev" x1="418" x2="463.7" y1="56" y2="56"/>
+            <line class="cap stroke-jev" x1="418" x2="418" y1="48" y2="64"/>
+            <line class="cap stroke-jev" x1="463.7" x2="463.7" y1="48" y2="64"/>
+            <circle class="dot fill-jev" cx="440.9" cy="56" r="7.5"/>
+            <text class="val-label" x="440.9" y="38">0.719</text>
           </g>
 
           <!-- Divider between the full-set row and the 19-query head-to-head -->
           <line class="row-divider" x1="0" x2="628" y1="96" y2="96"/>
 
-          <!-- Kill-switch line: Groq's 19-query point estimate minus 3 points = 0.686 - 0.03 = 0.656.
+          <!-- Kill-switch line: qwen3.8-27b's 19-query point estimate minus 3 points = 0.686 - 0.03 = 0.656.
                Spans the head-to-head rows only; it has no meaning against the 1,000-query row. -->
-          <line class="kill-line" x1="342" x2="342" y1="106" y2="262"/>
-          <text class="kill-label" x="335" y="118" text-anchor="end">Kill-switch line</text>
-          <text class="kill-sub" x="335" y="133" text-anchor="end">Groq &minus; 3 pts = 0.656</text>
+          <line class="kill-line" x1="350.9" x2="350.9" y1="106" y2="262"/>
+          <text class="kill-label" x="344" y="118" text-anchor="end">Kill-switch line</text>
+          <text class="kill-sub" x="344" y="133" text-anchor="end">qwen3.8-27b &minus; 3 pts = 0.656</text>
 
-          <!-- Row 2, Groq on 19: 0.686 [0.559, 0.809] -->
+          <!-- Row 2, qwen3.8-27b on 19: 0.686 [0.559, 0.809] -->
           <g class="ci-row">
-            <title>Groq (LLM decider), 19-query head-to-head: F1 0.686, 95% CI [0.559, 0.809]</title>
-            <text class="row-label" x="0" y="155">Groq</text>
+            <title>qwen3.8-27b (LLM decider), 19-query head-to-head: F1 0.686, 95% CI [0.559, 0.809]</title>
+            <text class="row-label" x="0" y="155">qwen3.8-27b</text>
             <text class="row-sub" x="0" y="171">same 19</text>
-            <line class="whisker stroke-llm" x1="199" x2="567.6" y1="156" y2="156"/>
-            <line class="cap stroke-llm" x1="199" x2="199" y1="148" y2="164"/>
-            <line class="cap stroke-llm" x1="567.6" x2="567.6" y1="148" y2="164"/>
-            <circle class="dot fill-llm" cx="386.2" cy="156" r="7.5"/>
-            <text class="val-label" x="386.2" y="138">0.686</text>
+            <line class="whisker stroke-llm" x1="212.3" x2="569.4" y1="156" y2="156"/>
+            <line class="cap stroke-llm" x1="212.3" x2="212.3" y1="148" y2="164"/>
+            <line class="cap stroke-llm" x1="569.4" x2="569.4" y1="148" y2="164"/>
+            <circle class="dot fill-llm" cx="393.7" cy="156" r="7.5"/>
+            <text class="val-label" x="393.7" y="138">0.686</text>
           </g>
 
           <!-- Row 3, Jev on the same 19: 0.640 [0.541, 0.729] -->
@@ -179,11 +212,11 @@
             <title>Jev, same 19 queries: F1 0.640, 95% CI [0.541, 0.729]</title>
             <text class="row-label" x="0" y="213">Jev</text>
             <text class="row-sub" x="0" y="229">same 19</text>
-            <line class="whisker stroke-jev" x1="172.4" x2="449.6" y1="214" y2="214"/>
-            <line class="cap stroke-jev" x1="172.4" x2="172.4" y1="206" y2="222"/>
-            <line class="cap stroke-jev" x1="449.6" x2="449.6" y1="206" y2="222"/>
-            <circle class="dot fill-jev" cx="318.4" cy="214" r="7.5"/>
-            <text class="val-label" x="318.4" y="244">0.640</text>
+            <line class="whisker stroke-jev" x1="186.6" x2="455.1" y1="214" y2="214"/>
+            <line class="cap stroke-jev" x1="186.6" x2="186.6" y1="206" y2="222"/>
+            <line class="cap stroke-jev" x1="455.1" x2="455.1" y1="206" y2="222"/>
+            <circle class="dot fill-jev" cx="328" cy="214" r="7.5"/>
+            <text class="val-label" x="328" y="244">0.640</text>
           </g>
         </svg>
 
@@ -196,7 +229,7 @@
           </div>
           <div class="callout">
             <div class="callout-num">CI includes 0</div>
-            <div class="callout-text">Paired per-query difference, Groq &minus; Jev: +4.6 pts, 95% CI [&minus;2.9, +12.7], Wilcoxon p = 0.21. Groq higher on 6 queries, Jev on 5, tied on 8.</div>
+            <div class="callout-text">Paired per-query difference, <span class="model">qwen3.8-27b</span> &minus; Jev: +4.6 pts, 95% CI [&minus;2.9, +12.7], Wilcoxon p = 0.21. <span class="model">qwen3.8-27b</span> higher on 6 queries, Jev on 5, tied on 8.</div>
           </div>
           <div class="callout">
             <div class="callout-num">0.736 vs. 0.678</div>
@@ -230,7 +263,7 @@
           </header>
           <div class="parity">
             <div class="parity-col parity-absent">
-              <span class="parity-name"><span class="swatch swatch-llm" aria-hidden="true"></span>Groq</span>
+              <span class="parity-name"><span class="swatch swatch-llm" aria-hidden="true"></span><span class="model">qwen3.8-27b</span></span>
               <span class="parity-val parity-na">Not run</span>
               <span class="parity-sub">token quota</span>
             </div>
@@ -240,7 +273,7 @@
               <span class="parity-sub">precision / recall / accuracy</span>
             </div>
           </div>
-          <p class="parity-note">Jev flagged every injected probe and no clean one. Groq was not run on this set (token quota), so this is a Jev-only result with no comparison implied.</p>
+          <p class="parity-note">Jev flagged every injected probe and no clean one. <span class="model">qwen3.8-27b</span> was not run on this set (token quota), so this is a Jev-only result with no comparison implied.</p>
         </article>
       </aside>
     </section>
@@ -248,20 +281,20 @@
     <!-- ===== Method strip ===== -->
     <section class="card method" aria-label="How this was measured">
       <div class="method-item">
-        <h3>1,100 questions, three disjoint splits</h3>
-        <p>80 train and 10 val questions were used to tune Jev's thresholds, locked at relevance 0.40 and injection 0.50. The 1,000 test questions are disjoint from both and were never used for tuning; thresholds were not re-tuned. Jev completed all 1,000 with 0 failures.</p>
+        <h3>1,100 questions, four disjoint splits</h3>
+        <p>Only the 80 train and 10 val questions were used to set the two tuned thresholds (setup, above). The 1,000 test questions are disjoint from both, and from a 10-question pilot, and were never used for tuning. Jev completed all 1,000 with 0 failures.</p>
       </div>
       <div class="method-item">
         <h3>Objective labels</h3>
-        <p>Output under test is the selected document set, scored against HotpotQA's own gold supporting facts. No LLM judge, no generation step.</p>
+        <p>Output under test is the selected document set, scored per query against HotpotQA's own gold supporting facts. No LLM judge, no generation step.</p>
       </div>
       <div class="method-item">
         <h3>Shared retrieval, frozen pool</h3>
-        <p>The retrieve step ranks documents semantically with a local embedding model, identical for both backends. Real Groq and Jev API calls against a frozen document pool, hashed before and after each query.</p>
+        <p>The CPU embedding retrieve step is identical for both backends; only the decision nodes differ. Real <span class="model">qwen3.8-27b</span> and Jev API calls against a frozen document pool, hashed before and after each query.</p>
       </div>
       <div class="method-item">
         <h3>Small n, stated plainly</h3>
-        <p>The head-to-head is 19 random test queries (20 run, 1 lost to a Groq request timeout), so only the Jev-alone number is tightly measured. It supersedes the 10-query pilot (Groq 0.677 vs. Jev 0.533), which was too small to conclude anything.</p>
+        <p>The head-to-head is 19 random test queries (20 run, 1 lost to a Groq request timeout), so only the Jev-alone number is tightly measured. It supersedes the 10-query pilot (<span class="model">qwen3.8-27b</span> 0.677 vs. Jev 0.533), which was too small to conclude anything.</p>
       </div>
     </section>
 
