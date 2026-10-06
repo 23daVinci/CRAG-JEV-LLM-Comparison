@@ -110,6 +110,24 @@ def metrics_at_threshold(
     return SelectionMetrics(precision=precision, recall=recall, f1=f1)
 
 
+def sweep_fixed_thresholds(
+    probabilities: list[float], labels: list[bool], candidates: list[float]
+) -> list[ThresholdPoint]:
+    """Precision/recall at each of a fixed, caller-supplied candidate list — unlike
+    `sweep_thresholds`, whose candidates are whatever probabilities happened to be observed. A fixed
+    grid makes tuning reproducible despite live-API jitter in the raw probabilities (a data-driven
+    sweep picked 0.360 then 0.370 on two consecutive runs) and keeps one noisy document from
+    creating its own "best" candidate."""
+
+    points: list[ThresholdPoint] = []
+    for threshold in candidates:
+        metrics = metrics_at_threshold(probabilities, labels, threshold)
+        points.append(
+            ThresholdPoint(threshold=threshold, precision=metrics.precision, recall=metrics.recall)
+        )
+    return points
+
+
 def threshold_point_f1(point: ThresholdPoint) -> float:
     if point.precision + point.recall == 0:
         return 0.0

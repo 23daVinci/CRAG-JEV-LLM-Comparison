@@ -5,6 +5,7 @@ from pathlib import Path
 
 import typer
 
+from jev_bench.bench.analysis import threshold_point_f1
 from jev_bench.bench.injection_eval import evaluate_injection_guard, load_probes
 from jev_bench.bench.report import build_report
 from jev_bench.bench.runner import ComparisonResult, QueryFailure, load_dataset, run_comparison
@@ -164,6 +165,12 @@ def injection_eval(
 
 
 def _report_outcome(name: str, outcome: TuningOutcome) -> None:
+    typer.echo(f"{name}: TRAIN sweep over the fixed candidate grid")
+    for point in outcome.train_points:
+        typer.echo(
+            f"  t={point.threshold:.2f} precision={point.precision:.2f} "
+            f"recall={point.recall:.2f} f1={threshold_point_f1(point):.2f}"
+        )
     t = outcome.train_threshold
     typer.echo(
         f"{name}: TRAIN best threshold={t.threshold:.3f} precision={t.precision:.2f} "

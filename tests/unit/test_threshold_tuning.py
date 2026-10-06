@@ -144,3 +144,32 @@ def test_filter_probes_by_split_keeps_only_matching_query_ids() -> None:
     probes = [{"id": "p1", "query_id": "q1"}, {"id": "p2", "query_id": "q2"}]
     splits = {"q1": "train", "q2": "test"}
     assert [p["id"] for p in filter_probes_by_split(probes, splits, "test")] == ["p2"]
+
+
+def test_candidate_grid_is_fixed_and_covers_both_regimes() -> None:
+    from jev_bench.bench.tuning import CANDIDATE_THRESHOLDS
+
+    assert CANDIDATE_THRESHOLDS[:3] == [0.05, 0.1, 0.15]
+    assert 0.95 in CANDIDATE_THRESHOLDS and 0.98 in CANDIDATE_THRESHOLDS
+    assert sorted(CANDIDATE_THRESHOLDS) == CANDIDATE_THRESHOLDS
+    assert len(CANDIDATE_THRESHOLDS) == len(set(CANDIDATE_THRESHOLDS))
+
+
+def test_sweep_fixed_thresholds_scores_only_the_given_candidates() -> None:
+    from jev_bench.bench.analysis import sweep_fixed_thresholds
+
+    points = sweep_fixed_thresholds([0.9, 0.7, 0.4, 0.1], [True, False, True, False], [0.4, 0.8])
+    assert [p.threshold for p in points] == [0.4, 0.8]
+    assert points[0].recall == 1.0
+    assert points[0].precision == pytest.approx(2 / 3)
+    assert points[1].recall == pytest.approx(0.5)
+    assert points[1].precision == 1.0
+
+
+def test_tune_target_is_stable_under_small_probability_jitter() -> None:
+    labels = [True, True, True, False, False, False]
+    base = [0.91, 0.84, 0.77, 0.21, 0.15, 0.08]
+    jittered = [p + 0.004 for p in base]
+    a = tune_target(base, labels, base, labels)
+    b = tune_target(jittered, labels, jittered, labels)
+    assert a.train_threshold.threshold == b.train_threshold.threshold

@@ -109,6 +109,14 @@ split, reported on held-out test" rather than trusting an untuned number. `jev-b
   premise" as distinct from relevance; a sufficiency label derived from gold-title coverage is a
   plausible future addition but was deliberately scoped out of this tuning pass rather than bundled in
   speculatively.
+- **Candidates are a fixed grid, not observed probabilities.** TRAIN is swept over
+  `bench/tuning.py::CANDIDATE_THRESHOLDS` (0.05 to 0.95 in 0.05 steps, plus 0.98 and 0.99 for the
+  near-saturated injection signal) via `analysis.py::sweep_fixed_thresholds`. An earlier version
+  swept every distinct observed probability; live-API jitter then moved the picked relevance
+  threshold from 0.360 to 0.370 between two consecutive runs, and any single noisy document could
+  create its own "best" candidate. A fixed grid makes the pick reproducible and lets the dry-run
+  print the whole curve. Ties on F1 go to the higher (more conservative) threshold. (The
+  all-observed-probabilities `sweep_thresholds` is still used for the report's PR curve.)
 - **`tune-thresholds` is dry-run by default**, printing the TRAIN sweep summary, the picked threshold,
   and VAL confirmation; it only writes `config/thresholds.yaml` with an explicit `--apply` flag. A
   threshold change is a frozen methodological decision — consistent with this project's

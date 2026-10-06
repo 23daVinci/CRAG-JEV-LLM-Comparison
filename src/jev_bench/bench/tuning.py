@@ -25,7 +25,7 @@ from jev_bench.bench.analysis import (
     ThresholdPoint,
     metrics_at_threshold,
     pick_best_f1_threshold,
-    sweep_thresholds,
+    sweep_fixed_thresholds,
     threshold_point_f1,
 )
 from jev_bench.bench.injection_eval import Probe, evaluate_injection_guard, load_probes
@@ -36,6 +36,10 @@ DEFAULT_SPLITS_PATH = Path(__file__).parent.parent.parent.parent / "eval" / "spl
 DEFAULT_THRESHOLDS_PATH = Path(__file__).parent.parent.parent.parent / "config" / "thresholds.yaml"
 
 Split = str  # "train" | "val" | "test"
+
+# 0.05 steps across the middle, plus 0.98/0.99 because the injection signal separates almost
+# perfectly near the top (a coarser grid ending at 0.9 would lose resolution exactly there).
+CANDIDATE_THRESHOLDS = [round(0.05 * i, 2) for i in range(1, 20)] + [0.98, 0.99]
 
 
 def load_splits(path: Path = DEFAULT_SPLITS_PATH) -> dict[str, Split]:
@@ -99,7 +103,7 @@ def tune_target(
     val_probabilities: list[float],
     val_labels: list[bool],
 ) -> TuningOutcome:
-    points = sweep_thresholds(train_probabilities, train_labels)
+    points = sweep_fixed_thresholds(train_probabilities, train_labels, CANDIDATE_THRESHOLDS)
     best = pick_best_f1_threshold(points)
     train_f1 = threshold_point_f1(best)
     val_metrics = metrics_at_threshold(val_probabilities, val_labels, best.threshold)
