@@ -18,8 +18,10 @@ import random
 from pathlib import Path
 
 SEED = 20260915  # same documented seed as scripts/curate_eval_set.py
-N_SAMPLES = 40  # raised from 12 for threshold tuning — 12 pairs split 3 ways (train/val/test via
+N_SAMPLES = 40  # raised from 12 for threshold tuning — 12 pairs split 3 ways (train/val/pilot via
 # eval/splits.json, by query_id) leaves single-digit probes per split, too thin to tune on
+BASE_N = 100  # the first 100 dataset records are train/val/pilot; the rest are the large test set
+N_TEST_SAMPLES = 100  # matched pairs drawn from the large test set's distractors
 
 REPO_ROOT = Path(__file__).parent.parent
 DATASET_PATH = REPO_ROOT / "eval" / "dataset.jsonl"
@@ -45,49 +47,61 @@ def load_dataset() -> list[dict]:
     ]
 
 
-def main() -> None:
-    records = load_dataset()
-
-    distractors: list[tuple[dict, str]] = [
+def _distractors(records: list[dict]) -> list[tuple[dict, str]]:
+    return [
         (record, title)
         for record in records
         for title in record["context"]
         if title not in record["gold_titles"]
     ]
 
-    rng = random.Random(SEED)
-    sampled = rng.sample(distractors, N_SAMPLES)
 
-    probes = []
+def _pair(index: int, record: dict, title: str) -> list[dict]:
+    base_text = record["context"][title]
+    template = INJECTION_TEMPLATES[index % len(INJECTION_TEMPLATES)]
+    common = {
+        "query_id": record["id"],
+        "query": record["question"],
+        "title": title,
+    }
+    return [
+        {"id": f"probe-{index:03d}-clean", **common, "text": base_text, "is_injection": False},
+        {
+            "id": f"probe-{index:03d}-injected",
+            **common,
+            "text": base_text + template,
+            "is_injection": True,
+        },
+    ]
+
+
+def main() -> None:
+    records = load_dataset()
+    base, test = records[:BASE_N], records[BASE_N:]
+
+    # Train/val/pilot probes: sampled from the base records only, with the original seed, so these
+    # 40 pairs are byte-identical to the ones the injection threshold was tuned on — adding a test
+    # set must not silently change the tuning data.
+    rng = random.Random(SEED)
+    sampled = rng.sample(_distractors(base), N_SAMPLES)
+    probes: list[dict] = []
     for i, (record, title) in enumerate(sampled):
-        base_text = record["context"][title]
-        template = INJECTION_TEMPLATES[i % len(INJECTION_TEMPLATES)]
-        probes.append(
-            {
-                "id": f"probe-{i:03d}-clean",
-                "query_id": record["id"],
-                "query": record["question"],
-                "title": title,
-                "text": base_text,
-                "is_injection": False,
-            }
-        )
-        probes.append(
-            {
-                "id": f"probe-{i:03d}-injected",
-                "query_id": record["id"],
-                "query": record["question"],
-                "title": title,
-                "text": base_text + template,
-                "is_injection": True,
-            }
-        )
+        probes.extend(_pair(i, record, title))
+
+    # Large-test-set probes: a separate rng stream, drawn only from test-set queries, numbered after
+    # the base probes. Probes inherit their split from `query_id`, so these land in `test`.
+    test_rng = random.Random(SEED + 1)
+    for j, (record, title) in enumerate(test_rng.sample(_distractors(test), N_TEST_SAMPLES)):
+        probes.extend(_pair(N_SAMPLES + j, record, title))
 
     with OUTPUT_PATH.open("w", encoding="utf-8") as f:
         for probe in probes:
             f.write(json.dumps(probe) + "\n")
 
-    print(f"wrote {len(probes)} probes ({N_SAMPLES} matched pairs) to {OUTPUT_PATH}")
+    print(
+        f"wrote {len(probes)} probes ({N_SAMPLES} train/val/pilot + {N_TEST_SAMPLES} test "
+        f"matched pairs) to {OUTPUT_PATH}"
+    )
 
 
 if __name__ == "__main__":

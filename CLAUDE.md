@@ -113,7 +113,7 @@ provider/concern (`GeminiSettings`, `GroqSettings`, `OllamaSettings`, `JevSettin
 streams both variants' graph execution to a static frontend — distinct from and not benchmark-grade
 like `jev-bench bench` (which runs sequentially, A then B, for measurement validity).
 
-**Eval data** (`eval/`): `dataset.jsonl` is a frozen, seeded 45-question slice of HotpotQA dev-distractor
-(see `eval/DATA_CARD.md` for license — CC BY-SA 4.0, share-alike, do not relicense derived files as
+**Eval data** (`eval/`): `dataset.jsonl` is a frozen, seeded 1,100-question slice of HotpotQA dev-distractor
+(80 train / 10 val / 10 pilot / 1,000 test, see `eval/splits.json`; see `eval/DATA_CARD.md` for license — CC BY-SA 4.0, share-alike, do not relicense derived files as
 MIT). `injection_probes.jsonl` is synthetic, ground-truth-by-construction. Both are curated by
 scripts in `scripts/`, not hand-edited.

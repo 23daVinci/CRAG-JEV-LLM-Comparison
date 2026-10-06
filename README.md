@@ -54,8 +54,9 @@ changed twice during development (short version: free-tier quotas and CPU-bound 
 
 ## Example result
 
-A real (not simulated) run against live Groq and Jev APIs, on the **held-out test split**
-(`eval/splits.json` — 10 of 100 eval queries never seen during threshold tuning). Jev's thresholds
+A real (not simulated) run against live Groq and Jev APIs, on the **10-query pilot split**
+(`pilot` in `eval/splits.json` — held out from threshold tuning; a larger 1,000-question `test`
+split has since been added for a properly powered evaluation). Jev's thresholds
 were tuned on a separate 80-query train split and confirmed on a 10-query val split beforehand; see
 `docs/METHODOLOGY.md`'s "Threshold tuning" section for the full process and the exact picked values
 (relevance 0.40, injection 0.50). Document ranking is semantic (local embeddings), shared by both

@@ -135,8 +135,10 @@ on TRAIN (and 1.00 on VAL), so the plateau-midpoint rule picked `0.50`. Both val
 `config/thresholds.yaml`. (An earlier tuning pass on the original 45-question/60-20-20 split picked
 0.37 and 0.98; those numbers are superseded.)
 
-The held-out **TEST** split (`jev-bench bench --split test` / `jev-bench injection-eval --split
-test`), scored once at these locked thresholds. A first attempt completed only 8 of 10 queries
+The held-out **PILOT** split (10 queries; `jev-bench bench --split pilot` / `jev-bench
+injection-eval --split pilot` — this was called the "test" split when it was run; it was relabelled
+`pilot` once the 1,000-question `test` split was added, see below), scored once at these locked
+thresholds. A first attempt completed only 8 of 10 queries
 (Groq network errors) and was discarded without being used; the table below is the complete second
 run, with every query's scores recorded in MLflow:
 
@@ -153,11 +155,36 @@ F1 difference (Groq minus Jev) is +0.144, 95% bootstrap CI [-0.020, +0.327], Wil
 scored higher on 5 queries, Jev on 1, 4 tied. The point-estimate gap is well past the pre-registered
 kill-switch threshold (3 points), but the interval includes zero, so the honest reading is **"much
 faster and cheaper, with a likely accuracy cost (driven by Jev's lower recall, 0.55 vs. 0.85) that a
-10-query test split cannot confirm"** — not an unqualified win for either backend. The speed
+10-query pilot split cannot confirm"** — not an unqualified win for either backend. The speed
 advantage shrank from ~22x on the old setup to ~7.5x; the most likely reason is the new semantic
 retrieval step, whose embedding call is a fixed cost paid by both variants (not verified with
 per-step timings). Groq's F1 on the same queries moved by about 0.06 between the discarded 8-query
 attempt and the complete run, a reminder of how much these numbers vary run to run.
+
+### Large held-out test set (1,000 questions)
+
+The 10-query pilot could not settle the quality question: the paired F1 CI straddled zero and one
+query moved the mean by 0.10. So a separate **1,000-question `test` split** was added
+(`scripts/add_test_set.py`; see `eval/DATA_CARD.md`), with these rules fixed *before* it was scored:
+
+- **Thresholds stay as tuned.** Jev's relevance (0.40) and injection (0.50) thresholds come from the
+  80 train / 10 val queries and are not re-tuned, re-swept or adjusted after seeing test results. The
+  question being asked is how the system performs with minimal tuning on data it has never seen.
+- **Disjoint by construction.** Test questions are absent from train, val and pilot by id and by
+  question text (checked by a unit test). The pilot is excluded because its results had already
+  been looked at.
+- **Same question mix** as the tuning data (71:29 bridge:comparison), so train and test differ in
+  *which* questions they contain, not in the mix of types.
+- **Analysis plan:** the paired per-query F1 comparison (mean difference, bootstrap 95% CI,
+  Wilcoxon) is the deciding statistic, judged against the pre-registered 3-point kill switch. A
+  separate injection-guard test uses 100 matched clean/injected pairs drawn from test-set queries
+  only.
+
+**Feasibility, stated plainly:** a full Groq-vs-Jev run over 1,000 queries is expensive. Groq costs
+about $0.007 and ~26 s per query in the pilot (~4-5k tokens per query), i.e. roughly $7, 7+ hours
+sequentially, and ~4-5M tokens — far beyond Groq's free-tier 200k tokens/day limit, so it needs a
+paid tier. Jev alone is about $0.25 and ~1 hour for the same 1,000 queries. Evaluating Jev's
+quality against gold needs no Groq calls at all; only the head-to-head comparison does.
 
 ### Latency statistics
 

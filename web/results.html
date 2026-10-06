@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark light">
-  <title>jev-bench results: Groq (LLM) vs. Jev, held-out test split</title>
+  <title>jev-bench results: Groq (LLM) vs. Jev, pilot held-out split</title>
   <!-- Static, self-contained results page. No scripts, no network requests, no backend.
        Open directly via file://. Append #light or #dark to the URL to force a theme. -->
   <link rel="stylesheet" href="results.css">
@@ -22,7 +22,7 @@
         <span class="sep" aria-hidden="true"></span>
         <span>A/B benchmark of an agentic retrieval workflow</span>
         <span class="sep" aria-hidden="true"></span>
-        <span>Held-out test split, n = 10</span>
+        <span>Pilot held-out split, n = 10</span>
       </div>
 
       <h1>Much faster and cheaper; <span class="h1-muted">a likely accuracy cost, not yet statistically established.</span></h1>
@@ -222,7 +222,7 @@
     <!-- ===== Method strip ===== -->
     <section class="card method" aria-label="How this was measured">
       <div class="method-item">
-        <h3>Held-out test</h3>
+        <h3>Pilot held-out split</h3>
         <p>10 of 100 frozen HotpotQA questions, never seen during tuning. Jev's thresholds (relevance 0.40, injection 0.50) were tuned on an 80-query train split and confirmed on a 10-query val split. A first test attempt finished only 8 of 10 queries (network errors) and was discarded; this is the complete second run.</p>
       </div>
       <div class="method-item">
