@@ -115,7 +115,10 @@ split, reported on held-out test" rather than trusting an untuned number. `jev-b
   swept every distinct observed probability; live-API jitter then moved the picked relevance
   threshold from 0.360 to 0.370 between two consecutive runs, and any single noisy document could
   create its own "best" candidate. A fixed grid makes the pick reproducible and lets the dry-run
-  print the whole curve. Ties on F1 go to the higher (more conservative) threshold. (The
+  print the whole curve. When thresholds tie for the best F1 (a plateau, as with injection, where
+  every threshold from 0.05 to 0.95 scored 1.00), the middle of the longest tied run is picked, not
+  an edge: an edge pick sits next to the cliff where F1 starts to fall (here 0.98), so it is the
+  least robust point. (The
   all-observed-probabilities `sweep_thresholds` is still used for the report's PR curve.)
 - **`tune-thresholds` is dry-run by default**, printing the TRAIN sweep summary, the picked threshold,
   and VAL confirmation; it only writes `config/thresholds.yaml` with an explicit `--apply` flag. A

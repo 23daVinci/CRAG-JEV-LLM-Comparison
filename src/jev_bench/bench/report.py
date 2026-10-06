@@ -5,6 +5,7 @@ from collections import Counter
 from jev_bench.bench.analysis import (
     bootstrap_mean_ci,
     gemini_operating_point,
+    paired_f1_comparison,
     paired_latency_comparison,
     precision_at_recall,
     score_selection,
@@ -136,6 +137,10 @@ def build_report(results: list[ComparisonResult]) -> str:
     a_name = "variant A"
     b_name = "variant B"
 
+    paired_f1 = paired_f1_comparison(
+        [score_selection(set(r.selected_titles), set(r.gold_titles)).f1 for r in a_results],
+        [score_selection(set(r.selected_titles), set(r.gold_titles)).f1 for r in b_results],
+    )
     paired = paired_latency_comparison(
         [r.latency_ms for r in a_results], [r.latency_ms for r in b_results]
     )
@@ -151,6 +156,13 @@ def build_report(results: list[ComparisonResult]) -> str:
         f"- Hodges-Lehmann shift estimate: {paired.hodges_lehmann_ms:.1f}ms\n"
         f"- Wilcoxon signed-rank: statistic={paired.wilcoxon_statistic:.1f} "
         f"p={paired.wilcoxon_pvalue:.4f}\n",
+        "### Paired selection-quality comparison (A minus B, per-query F1)\n\n"
+        f"- mean F1 delta: {paired_f1.mean_delta:+.3f}\n"
+        f"- bootstrap 95% CI: [{paired_f1.ci95_low:+.3f}, {paired_f1.ci95_high:+.3f}] "
+        "(B outperforms A only if this interval is entirely below zero)\n"
+        "- queries where A scored higher / B scored higher / tied: "
+        f"{paired_f1.a_better} / {paired_f1.b_better} / {paired_f1.tied}\n"
+        f"- Wilcoxon signed-rank: p={paired_f1.wilcoxon_pvalue:.4f}\n",
         _relevance_curve_section(a_results, b_results),
         _trajectory_section(results),
     ]

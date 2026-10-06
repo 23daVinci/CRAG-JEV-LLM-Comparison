@@ -18,10 +18,10 @@ def test_tune_target_picks_train_threshold_and_confirms_on_val_without_resweepin
 
     outcome = tune_target(train_probabilities, train_labels, val_probabilities, val_labels)
 
-    # Same sweep as test_threshold_sweep.py's pick_best_f1_threshold case: 0.4 maximizes train F1.
-    assert outcome.train_threshold.threshold == 0.4
+    # Every grid point 0.15..0.40 ties for the best train F1 (0.8); the plateau midpoint is 0.30.
+    assert outcome.train_threshold.threshold == 0.3
     assert outcome.train_f1 == pytest.approx(0.8)
-    # VAL confirmation reuses that exact threshold (0.4): both 0.95 and 0.5 clear it, but only
+    # VAL confirmation reuses that exact threshold (0.3): both 0.95 and 0.5 clear it, but only
     # 0.95 is a true positive, so precision drops to 0.5 while recall stays at 1.0.
     assert outcome.val_metrics.precision == pytest.approx(0.5)
     assert outcome.val_metrics.recall == 1.0
@@ -78,7 +78,8 @@ async def test_tune_relevance_threshold_never_touches_the_test_split() -> None:
 
     outcome = await tune_relevance_threshold(decider, records=records, splits=splits)
 
-    assert outcome.train_threshold.threshold == 0.9
+    # Perfect separation holds from 0.15 to 0.90; the plateau midpoint is 0.55.
+    assert outcome.train_threshold.threshold == 0.55
     assert outcome.val_metrics.f1 == pytest.approx(1.0)
 
 
@@ -130,7 +131,7 @@ async def test_tune_injection_threshold_never_touches_the_test_split() -> None:
 
     outcome = await tune_injection_threshold(decider, probes=probes, splits=splits)
 
-    assert outcome.train_threshold.threshold == 0.9
+    assert outcome.train_threshold.threshold == 0.55
     assert outcome.val_metrics.f1 == pytest.approx(1.0)
 
 
