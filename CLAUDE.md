@@ -46,6 +46,11 @@ Running the benchmark itself:
 uv run jev-bench bench --dry-run              # two ScriptedDeciders, no API keys needed
 uv run jev-bench bench --limit 5              # live run, first 5 queries of eval/dataset.jsonl
 uv run jev-bench injection-eval --dry-run     # scores the injection-screening guard
+uv run jev-bench bench --split test --track  # tracked run: per-query scores logged to MLflow
+uv run jev-bench bench --only jev --split test --track  # one backend only (Groq's free tier
+                                              # can't afford 1,000 queries); no paired stats
+uv run jev-bench tune-thresholds              # dry-run threshold tuning on train/val (--apply writes)
+uv run mlflow ui --backend-store-uri sqlite:///mlflow.db   # browse tracked runs
 uv run jev-bench serve                        # FastAPI+SSE live demo UI (web/), needs real keys
 ```
 
@@ -113,7 +118,7 @@ provider/concern (`GeminiSettings`, `GroqSettings`, `OllamaSettings`, `JevSettin
 streams both variants' graph execution to a static frontend — distinct from and not benchmark-grade
 like `jev-bench bench` (which runs sequentially, A then B, for measurement validity).
 
-**Eval data** (`eval/`): `dataset.jsonl` is a frozen, seeded 45-question slice of HotpotQA dev-distractor
-(see `eval/DATA_CARD.md` for license — CC BY-SA 4.0, share-alike, do not relicense derived files as
+**Eval data** (`eval/`): `dataset.jsonl` is a frozen, seeded 1,100-question slice of HotpotQA dev-distractor
+(80 train / 10 val / 10 pilot / 1,000 test, see `eval/splits.json`; see `eval/DATA_CARD.md` for license — CC BY-SA 4.0, share-alike, do not relicense derived files as
 MIT). `injection_probes.jsonl` is synthetic, ground-truth-by-construction. Both are curated by
 scripts in `scripts/`, not hand-edited.

@@ -115,3 +115,39 @@ def test_failures_are_persisted_and_a_failed_finish_keeps_logged_data(
     assert parent.data.metrics["n_failed"] == 1
     failures = _load(client, tracker.parent_run_id, "failures.json", tmp_path)["failures"]
     assert failures == [{"query_id": "q9", "error": "APIConnectionError: Connection error."}]
+
+
+@pytest.mark.asyncio
+async def test_single_variant_run_is_tracked_without_paired_stats(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from jev_bench.bench.runner import run_single
+
+    monkeypatch.chdir(tmp_path)
+    tracker = BenchTracker(
+        experiment="single-exp",
+        run_name="unit-single",
+        params={"mode": "single-variant"},
+        variant_names=("jev",),
+        tracking_uri=f"sqlite:///{(tmp_path / 'mlflow.db').as_posix()}",
+    )
+    results, failures = await run_single(
+        ScriptedDecider(name="jev"),
+        ScriptedRetriever(),
+        records=[_record("q1"), _record("q2"), _record("q3")],
+        on_result=tracker.record_single,
+        on_failure=tracker.record_failure,
+    )
+    assert len(results) == 3 and failures == []
+    tracker.finish("# single")
+
+    client = MlflowClient()
+    parent = client.get_run(tracker.parent_run_id)
+    assert parent.data.metrics["n_completed"] == 3
+    assert "paired_f1_mean_delta_a_minus_b" not in parent.data.metrics
+    children = client.search_runs(
+        [client.get_experiment_by_name("single-exp").experiment_id],
+        filter_string=f"tags.mlflow.parentRunId = '{tracker.parent_run_id}'",
+    )
+    assert len(children) == 1
+    assert [m.step for m in client.get_metric_history(children[0].info.run_id, "f1")] == [0, 1, 2]

@@ -167,3 +167,32 @@ def build_report(results: list[ComparisonResult]) -> str:
         _trajectory_section(results),
     ]
     return "\n".join(line for line in lines if line)
+
+
+def build_single_report(
+    name: str, results: list[QueryResult], question_types: dict[str, str]
+) -> str:
+    """Report for one backend run alone (no paired comparison is possible). Adds F1 by question
+    type, since with a large query set the bridge/comparison difference is measurable."""
+
+    if not results:
+        raise ValueError("no successful query results to report on — every query failed")
+
+    lines = [
+        "# Single-variant benchmark report\n",
+        f"{len(results)} queries, variant `{name}` only (no paired comparison).\n",
+        _side_summary(name, results),
+    ]
+    by_type: dict[str, list[float]] = {}
+    for result in results:
+        f1 = score_selection(set(result.selected_titles), set(result.gold_titles)).f1
+        by_type.setdefault(question_types.get(result.query_id, "unknown"), []).append(f1)
+    rows = []
+    for qtype, f1s in sorted(by_type.items()):
+        low, high = bootstrap_mean_ci(f1s)
+        rows.append(
+            f"- {qtype}: n={len(f1s)} mean f1={sum(f1s) / len(f1s):.3f} "
+            f"(95% bootstrap CI: [{low:.3f}, {high:.3f}])"
+        )
+    lines.append("### F1 by question type\n\n" + "\n".join(rows) + "\n")
+    return "\n".join(lines)
