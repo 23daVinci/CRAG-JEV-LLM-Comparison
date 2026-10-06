@@ -67,3 +67,33 @@ async def test_one_failing_query_does_not_prevent_others_from_completing() -> No
     )
     assert {r.query_id for r in results} == {"q1", "q3"}
     assert [f.query_id for f in failures] == ["q2"]
+
+
+@pytest.mark.asyncio
+async def test_run_single_isolates_a_failing_query_and_fires_callbacks() -> None:
+    from jev_bench.bench.runner import run_single
+
+    good = {**RECORD, "id": "q1"}
+    bad = {**RECORD, "id": "q2", "context": dict(RECORD["context"])}
+    seen: list[str] = []
+    failed: list[str] = []
+
+    calls = [0]
+
+    class TamperOnSecondQuery(ScriptedDecider):
+        async def screen_passage(self, query: str, doc: str):  # type: ignore[override]
+            calls[0] += 1
+            if calls[0] in (3, 4):
+                bad["context"]["doc_a"] = "tampered"
+            return await super().screen_passage(query, doc)
+
+    results, failures = await run_single(
+        TamperOnSecondQuery(name="a"),
+        ScriptedRetriever(),
+        records=[good, bad],
+        on_result=lambda r: seen.append(r.query_id),
+        on_failure=lambda f: failed.append(f.query_id),
+    )
+    assert [r.query_id for r in results] == ["q1"]
+    assert seen == ["q1"] and failed == ["q2"]
+    assert "changed during the run" in failures[0].error

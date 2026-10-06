@@ -3,13 +3,21 @@ from __future__ import annotations
 import asyncio
 from dataclasses import asdict
 from pathlib import Path
+from typing import Any
 
 import typer
 
 from jev_bench.bench.analysis import threshold_point_f1
 from jev_bench.bench.injection_eval import evaluate_injection_guard, load_probes
-from jev_bench.bench.report import build_report
-from jev_bench.bench.runner import ComparisonResult, QueryFailure, load_dataset, run_comparison
+from jev_bench.bench.report import build_report, build_single_report
+from jev_bench.bench.runner import (
+    ComparisonResult,
+    QueryFailure,
+    QueryResult,
+    load_dataset,
+    run_comparison,
+    run_single,
+)
 from jev_bench.bench.tuning import (
     TuningOutcome,
     apply_threshold_update,
@@ -53,6 +61,108 @@ def serve(
     uvicorn.run("jev_bench.api.app:app", host=host, port=port)
 
 
+def _bench_single(
+    *,
+    only: str,
+    records: list[dict[str, Any]],
+    dry_run: bool,
+    cassette_mode: str,
+    out: Path | None,
+    split: str | None,
+    limit: int | None,
+    track: bool,
+    experiment: str,
+    run_name: str | None,
+) -> None:
+    decider: Decider
+    retriever: Retriever
+    settings = load_settings()
+    if dry_run:
+        decider = ScriptedDecider(name=only)
+        retriever = ScriptedRetriever()
+    else:
+        decider = (
+            build_groq_decider(settings)
+            if only == "groq"
+            else with_cassette(
+                build_jev_decider(settings),
+                DEFAULT_CASSETTE_DIR,
+                cassette_mode,
+                model=settings.jev.model,
+            )
+        )
+        retriever = build_ollama_embedding_retriever(settings)
+    cfg = GraphConfig()
+
+    tracker = None
+    if track:
+        from datetime import datetime
+
+        from jev_bench.bench.tracking import BenchTracker, git_commit
+        from jev_bench.deciders.jev import JevThresholds
+
+        tracker = BenchTracker(
+            experiment=experiment,
+            run_name=run_name or f"{split or 'all'}-{only}-only-{datetime.now():%Y%m%d-%H%M%S}",
+            params={
+                "split": split or "all",
+                "n_queries_requested": len(records),
+                "limit": limit,
+                "dry_run": dry_run,
+                "cassette_mode": cassette_mode,
+                "variant": only,
+                "mode": "single-variant",
+                "groq_model": settings.groq.model,
+                "jev_model": settings.jev.model,
+                "retriever": retriever.name,
+                "embedding_model": settings.ollama.embedding_model,
+                "batch_size": cfg.batch_size,
+                "max_attempts": cfg.max_attempts,
+                "git_commit": git_commit(),
+                **{f"jev_threshold_{k}": v for k, v in asdict(JevThresholds.load()).items()},
+            },
+            variant_names=(only,),
+        )
+
+    async def _run() -> tuple[list[QueryResult], list[QueryFailure]]:
+        try:
+            return await run_single(
+                decider,
+                retriever,
+                records=records,
+                cfg=cfg,
+                on_result=tracker.record_single if tracker else None,
+                on_failure=tracker.record_failure if tracker else None,
+            )
+        finally:
+            await decider.aclose()
+
+    try:
+        results, failures = asyncio.run(_run())
+    except BaseException:
+        if tracker:
+            tracker.finish(ok=False)
+        raise
+    if failures:
+        typer.echo(f"WARNING: {len(failures)}/{len(records)} queries failed and were skipped:")
+        for failure in failures[:20]:
+            typer.echo(f"  {failure.query_id}: {failure.error}")
+        if len(failures) > 20:
+            typer.echo(f"  ... and {len(failures) - 20} more (all recorded in MLflow if --track)")
+    if not results:
+        typer.echo("No queries succeeded — nothing to report.")
+        if tracker:
+            tracker.finish(ok=False)
+        raise typer.Exit(code=1)
+    report = build_single_report(only, results, {r["id"]: r["type"] for r in records})
+    typer.echo(report)
+    if out:
+        out.write_text(report, encoding="utf-8")
+    if tracker:
+        tracker.finish(report)
+        typer.echo(f"MLflow run recorded (parent run id: {tracker.parent_run_id}).")
+
+
 @app.command()
 def bench(
     limit: int | None = typer.Option(
@@ -79,6 +189,11 @@ def bench(
     run_name: str | None = typer.Option(
         None, help="MLflow run name (with --track). Defaults to '<split or all>-<timestamp>'."
     ),
+    only: str | None = typer.Option(
+        None,
+        help="Run just one backend (groq | jev) instead of both — for query sets too large for "
+        "the other backend's quota. No paired comparison is possible in this mode.",
+    ),
 ) -> None:
     """Run both variants over the frozen eval set and print a benchmark report.
 
@@ -92,6 +207,23 @@ def bench(
         records = filter_records_by_split(records, load_splits(), split)
     if limit:
         records = records[:limit]
+
+    if only is not None:
+        if only not in ("groq", "jev"):
+            raise typer.BadParameter(f"--only must be groq or jev, got {only!r}")
+        _bench_single(
+            only=only,
+            records=records,
+            dry_run=dry_run,
+            cassette_mode=cassette_mode,
+            out=out,
+            split=split,
+            limit=limit,
+            track=track,
+            experiment=experiment,
+            run_name=run_name,
+        )
+        return
 
     decider_a: Decider
     decider_b: Decider
@@ -188,20 +320,28 @@ def injection_eval(
         False, help="Use ScriptedDeciders instead of live Groq/Jev — no API keys needed."
     ),
     split: str | None = typer.Option(None, help="Restrict to train|val|test via eval/splits.json."),
+    only: str | None = typer.Option(
+        None, help="Score just one backend (groq | jev) — e.g. when Groq's token quota is spent."
+    ),
 ) -> None:
     """Score each backend's injection-screening guard against eval/injection_probes.jsonl — ground
     truth here is exact by construction (we inserted the injection strings ourselves), not human-
     or LLM-judged."""
 
-    decider_a: Decider
-    decider_b: Decider
+    if only not in (None, "groq", "jev"):
+        raise typer.BadParameter(f"--only must be groq or jev, got {only!r}")
+
+    deciders: dict[str, Decider] = {}
     if dry_run:
-        decider_a = ScriptedDecider(name="groq")
-        decider_b = ScriptedDecider(name="jev")
+        for name in ("groq", "jev"):
+            if only in (None, name):
+                deciders[name] = ScriptedDecider(name=name)
     else:
         settings = load_settings()
-        decider_a = build_groq_decider(settings)
-        decider_b = build_jev_decider(settings)
+        if only in (None, "groq"):
+            deciders["groq"] = build_groq_decider(settings)
+        if only in (None, "jev"):
+            deciders["jev"] = build_jev_decider(settings)
 
     probes = load_probes()
     if split:
@@ -209,19 +349,19 @@ def injection_eval(
 
     async def _run() -> None:
         try:
-            for name, decider in (("groq", decider_a), ("jev", decider_b)):
+            for name, decider in deciders.items():
                 result = await evaluate_injection_guard(decider, probes)
                 typer.echo(
                     f"{name}: accuracy={result.accuracy:.2f} precision={result.precision:.2f} "
-                    f"recall={result.recall:.2f}"
+                    f"recall={result.recall:.2f} (n={len(probes)} probes)"
                 )
                 if result.false_positives:
                     typer.echo(f"  false positives: {result.false_positives}")
                 if result.false_negatives:
                     typer.echo(f"  false negatives: {result.false_negatives}")
         finally:
-            await decider_a.aclose()
-            await decider_b.aclose()
+            for decider in deciders.values():
+                await decider.aclose()
 
     asyncio.run(_run())
 

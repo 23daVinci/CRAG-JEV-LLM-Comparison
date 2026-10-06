@@ -141,3 +141,41 @@ async def run_comparison(
         if on_result is not None:
             on_result(comparison)
     return results, failures
+
+
+async def run_single(
+    decider: Decider,
+    retriever: Retriever,
+    records: list[Record] | None = None,
+    cfg: GraphConfig | None = None,
+    on_result: Callable[[QueryResult], None] | None = None,
+    on_failure: Callable[[QueryFailure], None] | None = None,
+) -> tuple[list[QueryResult], list[QueryFailure]]:
+    """One backend over a dataset — for runs where the other backend is unaffordable (e.g. a
+    1,000-query set against a rate-limited free tier). Same per-query failure isolation, fixture
+    integrity check and incremental callbacks as `run_comparison`; there is simply no second side
+    to compare against, so no paired statistics."""
+
+    records = records if records is not None else load_dataset()
+    app = build_graph(decider, retriever, cfg=cfg)
+    results: list[QueryResult] = []
+    failures: list[QueryFailure] = []
+    for record in records:
+        try:
+            fixture_hash = hash_doc_pool(record["context"])
+            result = await _run_one(app, record)
+            if hash_doc_pool(record["context"]) != fixture_hash:
+                raise RuntimeError(
+                    f"retrieval fixture for query {record['id']!r} changed during the run — "
+                    "retrieval must never be a variable"
+                )
+        except Exception as exc:  # noqa: BLE001 — one query's failure must not sink the run
+            failure = QueryFailure(query_id=record["id"], error=f"{type(exc).__name__}: {exc}")
+            failures.append(failure)
+            if on_failure is not None:
+                on_failure(failure)
+            continue
+        results.append(result)
+        if on_result is not None:
+            on_result(result)
+    return results, failures

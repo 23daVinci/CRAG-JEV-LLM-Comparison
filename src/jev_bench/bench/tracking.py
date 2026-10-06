@@ -82,7 +82,7 @@ class BenchTracker:
         experiment: str,
         run_name: str,
         params: dict[str, Any],
-        variant_names: tuple[str, str],
+        variant_names: tuple[str, ...],
         tracking_uri: str | None = None,
     ) -> None:
         mlflow.set_tracking_uri(tracking_uri or DEFAULT_TRACKING_URI)
@@ -105,7 +105,7 @@ class BenchTracker:
             ).info.run_id
             for name in variant_names
         )
-        self._rows: tuple[list[_QueryRow], list[_QueryRow]] = ([], [])
+        self._rows: list[list[_QueryRow]] = [[] for _ in variant_names]
         self._failures: list[dict[str, str]] = []
 
     @property
@@ -113,11 +113,17 @@ class BenchTracker:
         return self._parent_id
 
     def record(self, result: ComparisonResult) -> None:
+        self._record_sides(result.query_id, (result.a, result.b))
+
+    def record_single(self, result: QueryResult) -> None:
+        """For a one-variant tracker (`bench --only ...`)."""
+
+        self._record_sides(result.query_id, (result,))
+
+    def _record_sides(self, query_id: str, sides: tuple[QueryResult, ...]) -> None:
         step = len(self._rows[0])
-        for run_id, rows, side in zip(
-            self._child_ids, self._rows, (result.a, result.b), strict=True
-        ):
-            row = _row(step, result.query_id, side)
+        for run_id, rows, side in zip(self._child_ids, self._rows, sides, strict=True):
+            row = _row(step, query_id, side)
             rows.append(row)
             for key in ("f1", "precision", "recall", "latency_ms", "cost_usd", "attempts"):
                 self._client.log_metric(run_id, key, float(getattr(row, key)), step=step)
@@ -133,12 +139,13 @@ class BenchTracker:
         is dying on an exception) while keeping everything already logged."""
 
         status = RunStatus.to_string(RunStatus.FINISHED if ok else RunStatus.FAILED)
-        rows_a, rows_b = self._rows
+        rows_a = self._rows[0]
         for run_id, rows in zip(self._child_ids, self._rows, strict=True):
             self._log_aggregates(run_id, rows)
         self._client.log_metric(self._parent_id, "n_completed", float(len(rows_a)))
         self._client.log_metric(self._parent_id, "n_failed", float(len(self._failures)))
-        if rows_a:
+        if len(self._rows) == 2 and rows_a:
+            rows_b = self._rows[1]
             f1_cmp = paired_f1_comparison([r.f1 for r in rows_a], [r.f1 for r in rows_b])
             lat_cmp = paired_latency_comparison(
                 [r.latency_ms for r in rows_a], [r.latency_ms for r in rows_b]
